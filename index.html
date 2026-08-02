@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bram — Disc Golf Progression</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='none' stroke='%23C8FF4D' stroke-width='9'/><circle cx='50' cy='50' r='14' fill='%23C8FF4D'/></svg>">
+<link rel="stylesheet" href="assets/css/main.css">
+</head>
+<body>
+
+<header class="topbar" id="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true">
+        <circle cx="50" cy="50" r="40" fill="none" stroke="currentColor" stroke-width="8"/>
+        <circle cx="50" cy="50" r="13" fill="currentColor"/>
+      </svg>
+      <div class="brand-text">
+        <h1>Disc Golf Progression</h1>
+        <span class="brand-sub">Bram van der Sommen</span>
+      </div>
+    </div>
+    <div class="controls">
+      <label class="control">
+        <span class="control-label">Layout</span>
+        <select id="layout-picker" aria-label="Layout filter"></select>
+      </label>
+      <label class="control">
+        <span class="control-label">Period</span>
+        <select id="period-picker" aria-label="Period"></select>
+      </label>
+    </div>
+  </div>
+  <nav class="wrap navrow" id="navrow" aria-label="Sections">
+    <a class="navpill" href="#overview">Overview</a>
+    <a class="navpill" href="#coaching">Coaching</a>
+    <a class="navpill" href="#rating">Rating</a>
+    <a class="navpill" href="#scoring">Scoring</a>
+    <a class="navpill" href="#driving">Driving</a>
+    <a class="navpill" href="#putting">Putting</a>
+    <a class="navpill" href="#activity">Activity</a>
+    <a class="navpill" href="#benchmarks">Benchmarks</a>
+    <a class="navpill" href="#bag">Bag</a>
+  </nav>
+</header>
+
+<main class="wrap" id="main">
+
+  <div id="load-state" class="load-state">
+    <div class="load-disc" aria-hidden="true"></div>
+    <p>Pulling the latest numbers from the Sheet…</p>
+  </div>
+
+  <div id="dash" class="dash" hidden>
+
+    <section id="overview" class="section">
+      <div class="kpis" id="kpi-row"></div>
+    </section>
+
+    <section id="coaching" class="section">
+      <div id="eval-panel"></div>
+    </section>
+
+    <section id="rating" class="section">
+      <div class="seclabel">Trajectory</div>
+      <h2>Rating over time</h2>
+      <div id="rating-section"></div>
+    </section>
+
+    <section id="scoring" class="section">
+      <div class="seclabel">Scoring</div>
+      <h2>Scoring &amp; problem holes</h2>
+      <div id="scoring-section"></div>
+    </section>
+
+    <section id="driving" class="section">
+      <div class="seclabel">Off the tee</div>
+      <h2>Driving</h2>
+      <div id="driving-section"></div>
+    </section>
+
+    <section id="putting" class="section">
+      <div class="seclabel">On the green</div>
+      <h2>Putting</h2>
+      <div id="putting-section"></div>
+    </section>
+
+    <section id="activity" class="section">
+      <div class="seclabel">From Apple Watch</div>
+      <h2>Activity &amp; health</h2>
+      <div id="activity-section"></div>
+    </section>
+
+    <section id="benchmarks" class="section">
+      <div class="seclabel">Fixed reference set</div>
+      <h2>Benchmarks</h2>
+      <div id="benchmarks-section"></div>
+    </section>
+
+    <section id="bag" class="section">
+      <div class="seclabel">Equipment</div>
+      <h2>Bag</h2>
+      <div id="bag-section"></div>
+    </section>
+
+    <footer class="footer" id="footer"></footer>
+  </div>
+
+  <div id="error-state" class="load-state" hidden>
+    <p class="error-title">Couldn’t reach the Sheet</p>
+    <p id="error-detail" class="error-detail"></p>
+    <button id="retry-btn" class="btn">Retry</button>
+  </div>
+
+</main>
+
+<div id="tooltip" class="tooltip" role="status" hidden></div>
+
+<script src="vendor/papaparse.min.js"></script>
+<script src="vendor/marked.min.js"></script>
+<script type="module" src="assets/js/main.js"></script>
+</body>
+</html>

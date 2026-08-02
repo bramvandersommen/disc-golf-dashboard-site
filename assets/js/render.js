@@ -1,8 +1,8 @@
 // Section renderers. Every function renders FROM STORED DATA ONLY —
 // no coaching conclusions are derived here (hard rule, see CLAUDE.md).
 
-import { monthName, fmtDate, nextUploadDue } from './data.js?v=4';
-import { lineChart, barChart, groupedBars, gauge, countUp, showTip, hideTip, ttHtml, COLORS, reducedMotion } from './charts.js?v=4';
+import { monthName, fmtDate, nextUploadDue } from './data.js?v=202608022253';
+import { lineChart, barChart, groupedBars, gauge, countUp, showTip, hideTip, ttHtml, COLORS, reducedMotion } from './charts.js?v=202608022253';
 
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

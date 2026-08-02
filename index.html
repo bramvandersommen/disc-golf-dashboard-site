@@ -6,7 +6,9 @@
 <meta name="robots" content="noindex, nofollow">
 <title>Bram — Disc Golf Progression</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='42' fill='none' stroke='%23C8FF4D' stroke-width='9'/><circle cx='50' cy='50' r='14' fill='%23C8FF4D'/></svg>">
-<link rel="stylesheet" href="assets/css/main.css">
+<!-- ?v= is bumped on every deploy so a returning browser never serves stale
+     assets from cache. Bump it in scripts/deploy-pages.sh, not by hand. -->
+<link rel="stylesheet" href="assets/css/main.css?v=4">
 </head>
 <body>
 
@@ -121,6 +123,6 @@
 
 <script src="vendor/papaparse.min.js"></script>
 <script src="vendor/marked.min.js"></script>
-<script type="module" src="assets/js/main.js"></script>
+<script type="module" src="assets/js/main.js?v=4"></script>
 </body>
 </html>

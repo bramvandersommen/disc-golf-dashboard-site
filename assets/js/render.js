@@ -1,8 +1,8 @@
 // Section renderers. Every function renders FROM STORED DATA ONLY —
 // no coaching conclusions are derived here (hard rule, see CLAUDE.md).
 
-import { monthName, fmtDate, nextUploadDue } from './data.js';
-import { lineChart, barChart, groupedBars, gauge, countUp, showTip, hideTip, ttHtml, COLORS, reducedMotion } from './charts.js';
+import { monthName, fmtDate, nextUploadDue } from './data.js?v=4';
+import { lineChart, barChart, groupedBars, gauge, countUp, showTip, hideTip, ttHtml, COLORS, reducedMotion } from './charts.js?v=4';
 
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -68,9 +68,28 @@ export function renderKpis(state) {
   const prevM = trend.at(-2) || {};
   const el = $('#kpi-row');
 
-  const pdgaDelta = prev ? selected.pdga_everyday_estimate - prev.pdga_everyday_estimate : null;
   const proDelta = (lastM.pro_par_or_better_pct != null && prevM.pro_par_or_better_pct != null)
     ? lastM.pro_par_or_better_pct - prevM.pro_par_or_better_pct : null;
+
+  // Headline is the UDisc Everyday rating (best 8 of last 20) — the number
+  // Bram sees in the app. PDGA estimate is secondary and always labelled an
+  // estimate. Falls back to the PDGA-led card only if the column hasn't landed.
+  const everyday = selected.udisc_everyday_rating;
+  const ratingDelta = (everyday != null && prev?.udisc_everyday_rating != null)
+    ? everyday - prev.udisc_everyday_rating : null;
+  const pdgaDelta = prev ? selected.pdga_everyday_estimate - prev.pdga_everyday_estimate : null;
+
+  const ratingKpi = everyday != null
+    ? `<div class="kpi kpi-accent reveal">
+        <div class="kpi-label">UDisc rating · Everyday</div>
+        <div class="kpi-value"><span data-count></span>${deltaBadge(ratingDelta)}</div>
+        <div class="kpi-sub">${esc(selected.udisc_everyday_basis || 'best 8 of last 20')}<br>Est. PDGA <b>${selected.pdga_everyday_estimate ?? '—'}</b> · model estimate, not official</div>
+      </div>`
+    : `<div class="kpi kpi-accent reveal">
+        <div class="kpi-label">Estimated PDGA</div>
+        <div class="kpi-value"><span data-count></span>${deltaBadge(pdgaDelta)}</div>
+        <div class="kpi-sub">Model estimate, not an official rating.<br>Best-round est. ${selected.pdga_best_estimate ?? '—'}</div>
+      </div>`;
 
   // A month with no Pro-layout rounds is normal (travel, one-round months), not
   // a failure. Say so, and fall back to the most recent month that has one.
@@ -90,11 +109,7 @@ export function renderKpis(state) {
       </div>`;
 
   el.innerHTML = `
-    <div class="kpi kpi-accent reveal">
-      <div class="kpi-label">Estimated PDGA · last 10 rounds</div>
-      <div class="kpi-value"><span data-count></span>${deltaBadge(pdgaDelta, { unit: '', goodWhenUp: true })}</div>
-      <div class="kpi-sub">Model estimate, not an official rating.<br>UDisc avg last 10: <b>${selected.udisc_avg_recent_10 ?? '—'}</b> · best-round est. ${selected.pdga_best_estimate ?? '—'}</div>
-    </div>
+    ${ratingKpi}
     ${proKpi}
     <div class="kpi reveal">
       <div class="kpi-label">Practice streak</div>
@@ -108,7 +123,7 @@ export function renderKpis(state) {
     </div>`;
 
   const counts = el.querySelectorAll('[data-count]');
-  countUp(counts[0], selected.pdga_everyday_estimate);
+  countUp(counts[0], everyday ?? selected.pdga_everyday_estimate);
   if (lastM.pro_par_or_better_pct != null) {
     countUp(counts[1], lastM.pro_par_or_better_pct, { decimals: 1 });
     countUp(counts[2], selected.practice_streak_days);
@@ -201,11 +216,30 @@ export function renderEval(state) {
 // ── Rating trajectory ─────────────────────────────────────────────────
 export function renderRating(state) {
   const host = $('#rating-section');
+  const s = state.selected;
+  // Prefer the rolling Everyday series; fall back to the monthly mean until
+  // the backend column lands. Label says which one is on screen.
+  const hasEveryday = s.monthly_trend.some(m => m.everyday_rating != null);
+  const heroValue = s.udisc_everyday_rating
+    ?? [...s.monthly_trend].reverse().find(m => m.everyday_rating != null)?.everyday_rating
+    ?? s.monthly_trend.at(-1)?.avg_rating ?? null;
+  const heroBasis = s.udisc_everyday_rating != null
+    ? (s.udisc_everyday_basis || 'best 8 of last 20 rated rounds')
+    : (hasEveryday ? 'best 8 of last 20 rated rounds' : 'monthly average — Everyday rating not published yet');
+  const prevEveryday = state.prev?.udisc_everyday_rating ?? null;
+  const heroDelta = (s.udisc_everyday_rating != null && prevEveryday != null)
+    ? deltaBadge(s.udisc_everyday_rating - prevEveryday) : '';
+
   host.innerHTML = `
     <div class="grid2">
       <div class="card reveal">
-        <h3>Rating trajectory</h3>
-        <p class="note">Monthly average UDisc rating · Est. PDGA equivalent on hover</p>
+        <div class="rating-hero">
+          <div>
+            <div class="rating-hero-label">Current UDisc rating</div>
+            <div class="rating-hero-value"><span data-hero></span>${heroDelta}</div>
+            <div class="rating-hero-sub">${esc(heroBasis)}</div>
+          </div>
+        </div>
         <div class="chart-box" data-chart="rating"></div>
         <div class="chart-caveat" title="Rating asymmetry across layouts is large — even par is worth 202 on Pro but 138 on summer league.">
           ⚠ Mixes layouts — venue changes can read as rating swings
@@ -221,17 +255,20 @@ export function renderRating(state) {
   const trend = state.selected.monthly_trend;
   const anchorRow = anchorFor(state.layout, state.bench);
 
+  countUp(host.querySelector('[data-hero]'), heroValue);
+
   lineChart(host.querySelector('[data-chart="rating"]'), trend.map(m => ({
     x: monthName(m.month, { short: true, year: false }),
-    y: m.avg_rating,
+    y: hasEveryday ? m.everyday_rating : m.avg_rating,
     title: monthName(m.month),
     rows: [
-      ['Avg UDisc rating', m.avg_rating],
-      ['Est. PDGA', m.pdga_est],
+      ...(hasEveryday ? [['Everyday rating', m.everyday_rating ?? '—']] : []),
+      ['Month average', m.avg_rating],
+      ['Est. PDGA', (hasEveryday ? m.everyday_pdga_est : m.pdga_est) ?? '—'],
       ['Rounds', m.rounds],
     ],
   })), {
-    unit: 'UDisc rating',
+    unit: hasEveryday ? 'Everyday rating' : 'UDisc rating',
     anchor: anchorRow ? { value: anchorRow.benchmark_value, label: `even par · ${state.layout} (${anchorRow.benchmark_value})` } : null,
   });
 

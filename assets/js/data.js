@@ -43,6 +43,11 @@ function coerceStatsRow(r) {
     period_label: r.period_label,
     pdga_everyday_estimate: num(r.pdga_everyday_estimate),
     pdga_best_estimate: num(r.pdga_best_estimate),
+    // UDisc Everyday rating: best 8 of last 20 (or top 40% under 20 rated
+    // rounds). This is THE rating to show. `udisc_avg_recent_10` is deprecated
+    // — not a UDisc metric, kept only so old rows still parse.
+    udisc_everyday_rating: num(r.udisc_everyday_rating),
+    udisc_everyday_basis: r.udisc_everyday_basis || null,
     udisc_avg_recent_10: num(r.udisc_avg_recent_10),
     udisc_best_round: num(r.udisc_best_round),
     par_or_better_pct_by_layout: json(r.par_or_better_pct_by_layout) || {},
@@ -67,6 +72,11 @@ function coerceStatsRow(r) {
         birdie_pct: num(m.birdie_pct),
         double_pct: num(m.double_pct),
         pro_par_or_better_pct: num(m.pro_par_or_better_pct),
+        // Rolling Everyday rating as it stood at month end — what UDisc's own
+        // rating-history graph plots, and the honest "rating over time".
+        everyday_rating: num(m.everyday_rating),
+        everyday_pdga_est: num(m.everyday_pdga_est),
+        by_layout: m.by_layout || null,
       }))
       .sort((a, b) => a.month.localeCompare(b.month)), // never trust row order
     benchmark_deltas: json(r.benchmark_deltas) || [],

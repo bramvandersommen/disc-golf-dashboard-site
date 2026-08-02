@@ -1,7 +1,7 @@
 // Orchestration: load → state → render; period/layout changes re-render.
 
-import { loadAll, monthName } from './data.js';
-import * as R from './render.js';
+import { loadAll, monthName } from './data.js?v=4';
+import * as R from './render.js?v=4';
 
 const $ = sel => document.querySelector(sel);
 

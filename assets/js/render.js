@@ -30,13 +30,35 @@ const deltaBadge = (delta, { unit = '', decimals = 0, goodWhenUp = true } = {}) 
   return `<span class="delta ${good ? '' : 'down'}">${up ? '↑' : '↓'} ${Math.abs(r)}${unit}</span>`;
 };
 
-// Map layout-filter names to benchmark anchor metrics
-const ANCHOR_BY_LAYOUT = {
-  'Pro': 'even_par_rating_pro',
-  'Blossom League': 'even_par_rating_blossom',
-  'Amateur': 'even_par_rating_amateur',
-  'summer league': 'even_par_rating_summer',
-};
+// Layouts are fully data-derived: new venues appear in the Sheet as Bram travels
+// and must absorb with no code change. Anchors are matched by comparing the
+// benchmark metric's trailing token against the layout name, so a new
+// `even_par_rating_<x>` row wires itself up. No layout list is hardcoded.
+function anchorFor(layoutName, bench) {
+  if (!layoutName || layoutName === 'all') return null;
+  const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const layout = norm(layoutName);
+  const anchors = bench.filter(b => b.category === 'layout_rating_anchor');
+  return anchors.find(b => {
+    const token = norm(b.metric.replace(/^even_par_rating_/, ''));
+    return token && (layout === token || layout.startsWith(token) || token.startsWith(layout));
+  }) || null;
+}
+
+// Sample-size thresholds. Below MIN_SOLID a per-layout figure is shown but
+// visually de-emphasised; below MIN_TREND no per-layout trend is drawn.
+const MIN_SOLID = 5;
+const MIN_TREND = 3;
+
+const layoutCount = (state, name) => state.selected.rounds_by_layout?.[name] ?? null;
+
+// Renders "n=N rounds" when counts exist; states plainly that they don't when
+// they're absent. Never guesses a sample size.
+function sampleTag(n) {
+  if (n === null) return '';
+  const thin = n < MIN_SOLID;
+  return `<span class="n-tag${thin ? ' thin' : ''}" title="${n} round${n === 1 ? '' : 's'} on this layout">n=${n}</span>`;
+}
 
 // ── KPI row ───────────────────────────────────────────────────────────
 export function renderKpis(state) {
@@ -50,17 +72,30 @@ export function renderKpis(state) {
   const proDelta = (lastM.pro_par_or_better_pct != null && prevM.pro_par_or_better_pct != null)
     ? lastM.pro_par_or_better_pct - prevM.pro_par_or_better_pct : null;
 
+  // A month with no Pro-layout rounds is normal (travel, one-round months), not
+  // a failure. Say so, and fall back to the most recent month that has one.
+  const lastPro = [...trend].reverse().find(m => m.pro_par_or_better_pct != null);
+  const proKpi = lastM.pro_par_or_better_pct != null
+    ? `<div class="kpi reveal">
+        <div class="kpi-label">Par-or-better · Pro layout</div>
+        <div class="kpi-value"><span data-count></span><span class="unit">%</span>${deltaBadge(proDelta, { unit: ' pp', decimals: 1 })}</div>
+        <div class="kpi-sub">${monthName(lastM.month)} · same layout every month — the clean signal</div>
+      </div>`
+    : `<div class="kpi kpi-stale reveal">
+        <div class="kpi-label">Par-or-better · Pro layout</div>
+        <div class="kpi-value kpi-value-empty">No Pro rounds<span class="kpi-empty-sub">this period</span></div>
+        <div class="kpi-sub">${lastPro
+          ? `Last recorded <b>${lastPro.pro_par_or_better_pct}%</b> in ${monthName(lastPro.month)}`
+          : 'No Pro-layout rounds recorded yet'}</div>
+      </div>`;
+
   el.innerHTML = `
     <div class="kpi kpi-accent reveal">
       <div class="kpi-label">Estimated PDGA · last 10 rounds</div>
       <div class="kpi-value"><span data-count></span>${deltaBadge(pdgaDelta, { unit: '', goodWhenUp: true })}</div>
       <div class="kpi-sub">Model estimate, not an official rating.<br>UDisc avg last 10: <b>${selected.udisc_avg_recent_10 ?? '—'}</b> · best-round est. ${selected.pdga_best_estimate ?? '—'}</div>
     </div>
-    <div class="kpi reveal">
-      <div class="kpi-label">Par-or-better · Pro layout</div>
-      <div class="kpi-value"><span data-count></span><span class="unit">%</span>${deltaBadge(proDelta, { unit: ' pp', decimals: 1 })}</div>
-      <div class="kpi-sub">${lastM.month ? monthName(lastM.month) : '—'} · same layout every month — the clean signal</div>
-    </div>
+    ${proKpi}
     <div class="kpi reveal">
       <div class="kpi-label">Practice streak</div>
       <div class="kpi-value"><span data-count></span><span class="unit">days</span></div>
@@ -74,8 +109,12 @@ export function renderKpis(state) {
 
   const counts = el.querySelectorAll('[data-count]');
   countUp(counts[0], selected.pdga_everyday_estimate);
-  countUp(counts[1], lastM.pro_par_or_better_pct ?? null, { decimals: 1 });
-  countUp(counts[2], selected.practice_streak_days);
+  if (lastM.pro_par_or_better_pct != null) {
+    countUp(counts[1], lastM.pro_par_or_better_pct, { decimals: 1 });
+    countUp(counts[2], selected.practice_streak_days);
+  } else {
+    countUp(counts[1], selected.practice_streak_days);
+  }
 }
 
 // ── Coaching highlight strip (under the KPI row) ──────────────────────
@@ -180,8 +219,7 @@ export function renderRating(state) {
     </div>`;
 
   const trend = state.selected.monthly_trend;
-  const anchorMetric = ANCHOR_BY_LAYOUT[state.layout];
-  const anchorRow = anchorMetric ? state.bench.find(b => b.metric === anchorMetric) : null;
+  const anchorRow = anchorFor(state.layout, state.bench);
 
   lineChart(host.querySelector('[data-chart="rating"]'), trend.map(m => ({
     x: monthName(m.month, { short: true, year: false }),
@@ -232,10 +270,11 @@ export function renderScoring(state) {
         <h3>Par-or-better by layout</h3>
         <p class="note">All-time, per layout — soft and hard venues differ widely</p>
         <div data-list="layouts"></div>
+        <div class="chart-caveat" data-caveat="sample"></div>
       </div>
 
       <div class="card reveal">
-        <h3>Problem holes · ${esc(leakLayout)}</h3>
+        <h3>Problem holes · ${esc(leakLayout)}${sampleTag(layoutCount(state, leakLayout))}</h3>
         <p class="note">Five costliest holes, worst first${leakLayouts.length > 1 ? ' — switch layout in the header' : ''}</p>
         <table class="data-table">
           <thead><tr><th>Hole</th><th style="width:44%">Avg over par</th><th class="num">Double+ %</th></tr></thead>
@@ -275,26 +314,46 @@ export function renderScoring(state) {
 
   // layout list (HTML bars — long names need room)
   const listHost = host.querySelector('[data-list="layouts"]');
+  const counts = state.selected.rounds_by_layout;
   const entries = Object.entries(state.selected.par_or_better_pct_by_layout).sort((a, b) => b[1] - a[1]);
   listHost.innerHTML = entries.map(([name, pct]) => {
     const active = name === state.layout;
+    const n = layoutCount(state, name);
+    // Thin samples stay visible but must not read as solid as a 17-round layout.
+    const thin = n !== null && n < MIN_SOLID;
     return `
-    <div style="display:grid; grid-template-columns: 1fr 52px; gap:10px; align-items:center; padding:7px 0">
+    <div class="layout-row${thin ? ' thin' : ''}">
       <div>
-        <div style="font-size:12.5px; color:${active ? 'var(--lime)' : 'var(--ink-2)'}; font-weight:${active ? 600 : 400}; margin-bottom:4px">${esc(name)}</div>
-        <div style="height:7px; background:var(--surface-2); border-radius:4px; overflow:hidden">
-          <div style="height:100%; width:0%; border-radius:4px; background:${active ? 'var(--lime)' : 'var(--lime-dim)'}; opacity:${active ? 1 : 0.55}; transition:width 560ms var(--ease)" data-w="${pct}"></div>
+        <div class="layout-name${active ? ' active' : ''}">${esc(name)}${sampleTag(n)}</div>
+        <div class="layout-track">
+          <div class="layout-fill${active ? ' active' : ''}" style="width:0%" data-w="${pct}"></div>
         </div>
       </div>
-      <div style="text-align:right; font-family:var(--font-display); font-weight:600; font-size:14px; color:${active ? 'var(--lime)' : 'var(--ink)'}">${pct}%</div>
+      <div class="layout-pct${active ? ' active' : ''}">${pct}%</div>
     </div>`;
   }).join('');
+
+  const caveat = host.querySelector('[data-caveat="sample"]');
+  if (!counts) {
+    caveat.innerHTML = '⚠ Sample sizes vary — round counts per layout not published yet, so treat these as unequal evidence';
+  } else if (entries.some(([name]) => (layoutCount(state, name) ?? 99) < MIN_SOLID)) {
+    caveat.innerHTML = `⚠ Muted rows have fewer than ${MIN_SOLID} rounds — directional only`;
+  } else {
+    caveat.remove();
+  }
   requestAnimationFrame(() => requestAnimationFrame(() =>
     listHost.querySelectorAll('[data-w]').forEach(b => b.style.width = `${b.dataset.w}%`)));
 
   // hole leaks
   const leaks = state.selected.hole_leak_table[leakLayout] || [];
   const maxOver = Math.max(...leaks.map(l => l.avgOver), 0.01);
+  const leakN = layoutCount(state, leakLayout);
+  if (leakN !== null && leakN < MIN_TREND) {
+    const note = document.createElement('div');
+    note.className = 'chart-caveat';
+    note.textContent = `⚠ Only ${leakN} round${leakN === 1 ? '' : 's'} here — single-round holes show as 0% or 100%`;
+    host.querySelector('[data-list="leaks"]').closest('.card').appendChild(note);
+  }
   host.querySelector('[data-list="leaks"]').innerHTML = leaks.length ? leaks.map(l => `
     <tr>
       <td style="font-family:var(--font-display); font-weight:600">${esc(l.hole)}</td>
@@ -432,8 +491,9 @@ export function renderBenchmarks(state) {
       ${targetRows}${playerRows}
       <div class="anchor-chips">
         ${anchors.map(a => {
-          const layoutName = Object.entries(ANCHOR_BY_LAYOUT).find(([, m]) => m === a.metric)?.[0] || a.metric;
-          return `<span class="anchor-chip ${layoutName === state.layout ? 'active' : ''}">${esc(layoutName)} even par ≈ <b>${a.benchmark_value}</b></span>`;
+          const active = anchorFor(state.layout, state.bench)?.metric === a.metric;
+          const label = a.metric.replace(/^even_par_rating_/, '').replace(/_/g, ' ');
+          return `<span class="anchor-chip ${active ? 'active' : ''}">${esc(label)} even par ≈ <b>${a.benchmark_value}</b></span>`;
         }).join('')}
       </div>
       <p class="note" style="margin:12px 0 0">Even-par anchors show how much rating a venue is “worth” — a 64-point spread between Pro and summer league. That is why the rating chart carries a layout caveat.</p>

@@ -11,7 +11,9 @@ const TABS = {
   meta:         '1909773820',
 };
 
-const csvUrl = gid => `${PUB}?gid=${gid}&single=true&output=csv`;
+// Cache-buster: `cache: 'no-store'` only governs the browser cache, not Google's
+// CDN edge. A unique query param is what actually defeats an intermediary.
+const csvUrl = gid => `${PUB}?gid=${gid}&single=true&output=csv&_=${Date.now()}`;
 
 function parseCsv(text) {
   const { data, errors } = Papa.parse(text, { header: true, skipEmptyLines: 'greedy' });
@@ -44,6 +46,10 @@ function coerceStatsRow(r) {
     udisc_avg_recent_10: num(r.udisc_avg_recent_10),
     udisc_best_round: num(r.udisc_best_round),
     par_or_better_pct_by_layout: json(r.par_or_better_pct_by_layout) || {},
+    // Not in the contract yet — requested 2026-08-02. Absent until the backend
+    // ships it; the UI degrades to "sample size not published" rather than
+    // implying every layout percentage rests on the same evidence.
+    rounds_by_layout: json(r.rounds_by_layout) || null,
     hole_leak_table: json(r.hole_leak_table) || {},
     pressure_split: json(r.pressure_split),
     putting_pct_by_distance: json(r.putting_pct_by_distance) || {},

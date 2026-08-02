@@ -165,6 +165,57 @@ select:hover, select:focus-visible { border-color: var(--lime-dim); outline: non
 .delta.down { background: rgba(255, 138, 122, 0.12); color: var(--bad); }
 .delta.flat { background: var(--surface-3); color: var(--muted); }
 
+/* ─── Coaching highlight strip (under KPI row) ───────────────────────── */
+.coach-strip {
+  display: block; text-decoration: none; cursor: pointer;
+  margin-top: 14px; padding: 18px 22px;
+  border-radius: var(--r-card);
+  border: 1px solid rgba(143, 179, 57, 0.55);
+  background:
+    radial-gradient(100% 120% at 0% 0%, rgba(200, 255, 77, 0.08), transparent 55%),
+    var(--surface);
+  transition: border-color 180ms, box-shadow 180ms;
+}
+.coach-strip:hover { border-color: var(--lime); box-shadow: 0 0 34px rgba(200, 255, 77, 0.08); }
+.coach-strip-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.coach-strip-tag {
+  display: inline-flex; align-items: center; gap: 7px;
+  font-size: 10.5px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--lime); font-weight: 600;
+}
+.coach-strip-tag::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--lime); box-shadow: 0 0 8px var(--lime); }
+.coach-strip-cta { font-size: 11.5px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+.coach-strip:hover .coach-strip-cta { color: var(--lime); }
+.coach-strip-headline {
+  font-family: var(--font-display); font-size: 18px; font-weight: 600;
+  line-height: 1.4; color: var(--ink); letter-spacing: -0.01em; max-width: 52em;
+}
+.coach-strip-prios { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.coach-strip-prio {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--ink-2); text-decoration: none;
+  background: rgba(10, 13, 11, 0.5); border: 1px solid var(--line);
+  border-radius: var(--r-pill); padding: 6px 13px 6px 8px;
+}
+.coach-strip-prio b {
+  font-family: var(--font-display); font-size: 11px; color: #0A0D0B;
+  background: var(--lime); border-radius: 50%;
+  width: 17px; height: 17px; display: inline-flex; align-items: center; justify-content: center;
+}
+.coach-strip-empty {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  border-style: dashed; border-color: var(--line); background: transparent;
+  cursor: default;
+}
+.coach-strip-empty .coach-strip-note { font-size: 13px; color: var(--muted); }
+.coach-strip-link {
+  font: 600 12.5px var(--font-body); color: var(--lime);
+  background: rgba(200, 255, 77, 0.1); border: 1px solid rgba(200, 255, 77, 0.25);
+  border-radius: var(--r-pill); padding: 7px 14px; cursor: pointer;
+  transition: background 160ms;
+}
+.coach-strip-link:hover { background: rgba(200, 255, 77, 0.18); }
+
 /* ─── Coaching evaluation panel ──────────────────────────────────────── */
 .eval-panel {
   border: 1px solid rgba(143, 179, 57, 0.55);

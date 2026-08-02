@@ -37,11 +37,9 @@
     <a class="navpill" href="#coaching">Coaching</a>
     <a class="navpill" href="#rating">Rating</a>
     <a class="navpill" href="#scoring">Scoring</a>
-    <a class="navpill" href="#driving">Driving</a>
     <a class="navpill" href="#putting">Putting</a>
     <a class="navpill" href="#activity">Activity</a>
     <a class="navpill" href="#benchmarks">Benchmarks</a>
-    <a class="navpill" href="#bag">Bag</a>
   </nav>
 </header>
 
@@ -56,6 +54,7 @@
 
     <section id="overview" class="section">
       <div class="kpis" id="kpi-row"></div>
+      <div id="coach-strip"></div>
     </section>
 
     <section id="coaching" class="section">
@@ -74,7 +73,8 @@
       <div id="scoring-section"></div>
     </section>
 
-    <section id="driving" class="section">
+    <!-- Driving hidden until TechDisc data lands (see _contract/requests/) -->
+    <section id="driving" class="section" hidden>
       <div class="seclabel">Off the tee</div>
       <h2>Driving</h2>
       <div id="driving-section"></div>
@@ -98,7 +98,8 @@
       <div id="benchmarks-section"></div>
     </section>
 
-    <section id="bag" class="section">
+    <!-- Bag hidden — not relevant for now -->
+    <section id="bag" class="section" hidden>
       <div class="seclabel">Equipment</div>
       <h2>Bag</h2>
       <div id="bag-section"></div>

@@ -78,6 +78,43 @@ export function renderKpis(state) {
   countUp(counts[2], selected.practice_streak_days);
 }
 
+// ── Coaching highlight strip (under the KPI row) ──────────────────────
+// Renders the STORED headline + priority titles as a prominent pointer to
+// the full panel. No coaching text is generated here.
+export function renderCoachStrip(state) {
+  const host = $('#coach-strip');
+  const row = state.evalByPeriod.get(state.selected.period_label);
+
+  if (!row) {
+    // most recent period that has an evaluation, for one-tap navigation
+    const latest = state.periods.find(p => state.evalByPeriod.has(p.period_label));
+    host.innerHTML = `
+      <div class="coach-strip coach-strip-empty reveal">
+        <span class="coach-strip-tag">Coaching</span>
+        <span class="coach-strip-note">No evaluation for this period yet.</span>
+        ${latest ? `<button class="coach-strip-link" data-goto="${latest.period_label}">Latest evaluation · ${monthName(latest.period_label)} →</button>` : ''}
+      </div>`;
+    host.querySelector('[data-goto]')?.addEventListener('click', e => {
+      const picker = document.getElementById('period-picker');
+      picker.value = e.target.dataset.goto;
+      picker.dispatchEvent(new Event('change'));
+    });
+    return;
+  }
+
+  const prioChips = (row.priorities || []).map(p =>
+    `<span class="coach-strip-prio"><b>${esc(p.rank)}</b>${esc(p.title)}</span>`).join('');
+  host.innerHTML = `
+    <a class="coach-strip reveal" href="#coaching">
+      <div class="coach-strip-head">
+        <span class="coach-strip-tag">Coaching focus · ${esc(state.selected.period_label)}</span>
+        <span class="coach-strip-cta">Full evaluation ↓</span>
+      </div>
+      <div class="coach-strip-headline">${esc(row.headline)}</div>
+      <div class="coach-strip-prios">${prioChips}</div>
+    </a>`;
+}
+
 // ── Coaching evaluation panel ─────────────────────────────────────────
 export function renderEval(state) {
   const row = state.evalByPeriod.get(state.selected.period_label);
@@ -125,17 +162,11 @@ export function renderEval(state) {
 // ── Rating trajectory ─────────────────────────────────────────────────
 export function renderRating(state) {
   const host = $('#rating-section');
-  const unit = state.ratingUnit || 'udisc';
   host.innerHTML = `
     <div class="grid2">
       <div class="card reveal">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap">
-          <div><h3>Rating trajectory</h3><p class="note">Monthly average round rating</p></div>
-          <div class="seg-toggle" role="tablist">
-            <button data-unit="udisc" class="${unit === 'udisc' ? 'active' : ''}">UDisc</button>
-            <button data-unit="pdga" class="${unit === 'pdga' ? 'active' : ''}">Est. PDGA</button>
-          </div>
-        </div>
+        <h3>Rating trajectory</h3>
+        <p class="note">Monthly average UDisc rating · Est. PDGA equivalent on hover</p>
         <div class="chart-box" data-chart="rating"></div>
         <div class="chart-caveat" title="Rating asymmetry across layouts is large — even par is worth 202 on Pro but 138 on summer league.">
           ⚠ Mixes layouts — venue changes can read as rating swings
@@ -148,24 +179,21 @@ export function renderRating(state) {
       </div>
     </div>`;
 
-  host.querySelectorAll('.seg-toggle button').forEach(btn =>
-    btn.addEventListener('click', () => { state.ratingUnit = btn.dataset.unit; renderRating(state); }));
-
   const trend = state.selected.monthly_trend;
-  const pdga = unit === 'pdga';
   const anchorMetric = ANCHOR_BY_LAYOUT[state.layout];
-  const anchorRow = (!pdga && anchorMetric) ? state.bench.find(b => b.metric === anchorMetric) : null;
+  const anchorRow = anchorMetric ? state.bench.find(b => b.metric === anchorMetric) : null;
 
   lineChart(host.querySelector('[data-chart="rating"]'), trend.map(m => ({
     x: monthName(m.month, { short: true, year: false }),
-    y: pdga ? m.pdga_est : m.avg_rating,
+    y: m.avg_rating,
     title: monthName(m.month),
     rows: [
-      [pdga ? 'Est. PDGA' : 'Avg UDisc rating', pdga ? m.pdga_est : m.avg_rating],
+      ['Avg UDisc rating', m.avg_rating],
+      ['Est. PDGA', m.pdga_est],
       ['Rounds', m.rounds],
     ],
   })), {
-    unit: pdga ? 'Est. PDGA' : 'UDisc rating',
+    unit: 'UDisc rating',
     anchor: anchorRow ? { value: anchorRow.benchmark_value, label: `even par · ${state.layout} (${anchorRow.benchmark_value})` } : null,
   });
 

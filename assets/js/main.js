@@ -25,14 +25,14 @@ function selectPeriod(label) {
 
 function renderAll() {
   R.renderKpis(state);
+  R.renderCoachStrip(state);
   R.renderEval(state);
   R.renderRating(state);
   R.renderScoring(state);
-  R.renderDriving();
+  // Driving + Bag sections hidden for now (no TechDisc data / not relevant)
   R.renderPutting(state);
   R.renderActivity(state);
   R.renderBenchmarks(state);
-  R.renderBag();
   R.renderFooter(state);
   observeReveals();
 }

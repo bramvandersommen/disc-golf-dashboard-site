@@ -1,8 +1,9 @@
 // Section renderers. Every function renders FROM STORED DATA ONLY —
 // no coaching conclusions are derived here (hard rule, see CLAUDE.md).
+// All distances are metric; the putts tab's distance_ft is never read.
 
-import { monthName, fmtDate, nextUploadDue } from './data.js?v=202608022253';
-import { lineChart, barChart, groupedBars, gauge, countUp, showTip, hideTip, ttHtml, COLORS, reducedMotion } from './charts.js?v=202608022253';
+import { monthName, periodName, periodRange, fmtDate, nextUploadDue, aggregateRange, activityCalendar, MODE_B_EXCLUDES } from './data.js?v=5';
+import { lineChart, barChart, groupedBars, contributionGraph, countUp, showTip, hideTip, ttHtml, COLORS } from './charts.js?v=5';
 
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -26,58 +27,46 @@ const deltaBadge = (delta, { unit = '', decimals = 0, goodWhenUp = true } = {}) 
   const r = +delta.toFixed(decimals);
   if (r === 0) return `<span class="delta flat">–</span>`;
   const up = r > 0;
-  const good = up === goodWhenUp;
-  return `<span class="delta ${good ? '' : 'down'}">${up ? '↑' : '↓'} ${Math.abs(r)}${unit}</span>`;
+  return `<span class="delta ${up === goodWhenUp ? '' : 'down'}">${up ? '↑' : '↓'} ${Math.abs(r)}${unit}</span>`;
 };
 
-// Layouts are fully data-derived: new venues appear in the Sheet as Bram travels
-// and must absorb with no code change. Anchors are matched by comparing the
-// benchmark metric's trailing token against the layout name, so a new
-// `even_par_rating_<x>` row wires itself up. No layout list is hardcoded.
+// Layouts are fully data-derived: new venues appear as Bram travels and must
+// absorb with no code change. Anchors match `even_par_rating_<x>` benchmark
+// metrics to layout names at runtime. No layout list is hardcoded.
 function anchorFor(layoutName, bench) {
   if (!layoutName || layoutName === 'all') return null;
   const norm = s => String(s).toLowerCase().replace(/[^a-z0-9]/g, '');
   const layout = norm(layoutName);
-  const anchors = bench.filter(b => b.category === 'layout_rating_anchor');
-  return anchors.find(b => {
+  return bench.filter(b => b.category === 'layout_rating_anchor').find(b => {
     const token = norm(b.metric.replace(/^even_par_rating_/, ''));
     return token && (layout === token || layout.startsWith(token) || token.startsWith(layout));
   }) || null;
 }
 
-// Sample-size thresholds. Below MIN_SOLID a per-layout figure is shown but
-// visually de-emphasised; below MIN_TREND no per-layout trend is drawn.
-const MIN_SOLID = 5;
-const MIN_TREND = 3;
+const MIN_SOLID = 5;        // rounds — below this a per-layout figure is muted
+const MIN_TREND = 3;        // rounds — below this no per-layout trend
+const MIN_PUTT_ATTEMPTS = 50; // attempts — below this a distance bucket is muted
 
 const layoutCount = (state, name) => state.selected.rounds_by_layout?.[name] ?? null;
 
-// Renders "n=N rounds" when counts exist; states plainly that they don't when
-// they're absent. Never guesses a sample size.
-function sampleTag(n) {
-  if (n === null) return '';
+function sampleTag(n, noun = 'round') {
+  if (n === null || n === undefined) return '';
   const thin = n < MIN_SOLID;
-  return `<span class="n-tag${thin ? ' thin' : ''}" title="${n} round${n === 1 ? '' : 's'} on this layout">n=${n}</span>`;
+  return `<span class="n-tag${thin ? ' thin' : ''}" title="${n} ${noun}${n === 1 ? '' : 's'}">n=${n}</span>`;
 }
+
+const metres = key => parseFloat(String(key).replace('m', ''));
 
 // ── KPI row ───────────────────────────────────────────────────────────
 export function renderKpis(state) {
   const { selected, prev } = state;
   const trend = selected.monthly_trend;
   const lastM = trend.at(-1) || {};
-  const prevM = trend.at(-2) || {};
   const el = $('#kpi-row');
 
-  const proDelta = (lastM.pro_par_or_better_pct != null && prevM.pro_par_or_better_pct != null)
-    ? lastM.pro_par_or_better_pct - prevM.pro_par_or_better_pct : null;
-
-  // Headline is the UDisc Everyday rating (best 8 of last 20) — the number
-  // Bram sees in the app. PDGA estimate is secondary and always labelled an
-  // estimate. Falls back to the PDGA-led card only if the column hasn't landed.
   const everyday = selected.udisc_everyday_rating;
   const ratingDelta = (everyday != null && prev?.udisc_everyday_rating != null)
     ? everyday - prev.udisc_everyday_rating : null;
-  const pdgaDelta = prev ? selected.pdga_everyday_estimate - prev.pdga_everyday_estimate : null;
 
   const ratingKpi = everyday != null
     ? `<div class="kpi kpi-accent reveal">
@@ -87,66 +76,86 @@ export function renderKpis(state) {
       </div>`
     : `<div class="kpi kpi-accent reveal">
         <div class="kpi-label">Estimated PDGA</div>
-        <div class="kpi-value"><span data-count></span>${deltaBadge(pdgaDelta)}</div>
-        <div class="kpi-sub">Model estimate, not an official rating.<br>Best-round est. ${selected.pdga_best_estimate ?? '—'}</div>
+        <div class="kpi-value"><span data-count></span></div>
+        <div class="kpi-sub">Model estimate, not an official rating.</div>
       </div>`;
 
-  // A month with no Pro-layout rounds is normal (travel, one-round months), not
-  // a failure. Say so, and fall back to the most recent month that has one.
-  const lastPro = [...trend].reverse().find(m => m.pro_par_or_better_pct != null);
-  const proKpi = lastM.pro_par_or_better_pct != null
-    ? `<div class="kpi reveal">
-        <div class="kpi-label">Par-or-better · Pro layout</div>
-        <div class="kpi-value"><span data-count></span><span class="unit">%</span>${deltaBadge(proDelta, { unit: ' pp', decimals: 1 })}</div>
-        <div class="kpi-sub">${monthName(lastM.month)} · same layout every month — the clean signal</div>
+  // Putting sits next to the rating: it is the largest measured gap in the
+  // dataset, so it gets top-level billing rather than living below the fold.
+  const p = selected.putting_summary;
+  const c1 = p?.c1;
+  const puttKpi = c1?.pct != null
+    ? `<div class="kpi kpi-putt reveal">
+        <div class="kpi-label">C1 putting · inside 10m</div>
+        <div class="kpi-value"><span data-count></span><span class="unit">%</span></div>
+        <div class="kpi-sub">Target <b>${c1.target_pct}%</b> · gap <b class="gap">${(c1.target_pct - c1.pct).toFixed(1)} pts</b><br>${c1.made} of ${c1.attempts} across ${c1.sessions} sessions</div>
       </div>`
-    : `<div class="kpi kpi-stale reveal">
-        <div class="kpi-label">Par-or-better · Pro layout</div>
-        <div class="kpi-value kpi-value-empty">No Pro rounds<span class="kpi-empty-sub">this period</span></div>
-        <div class="kpi-sub">${lastPro
-          ? `Last recorded <b>${lastPro.pro_par_or_better_pct}%</b> in ${monthName(lastPro.month)}`
-          : 'No Pro-layout rounds recorded yet'}</div>
+    : `<div class="kpi reveal">
+        <div class="kpi-label">C1 putting</div>
+        <div class="kpi-value kpi-value-empty">No putting data<span class="kpi-empty-sub">this period</span></div>
+        <div class="kpi-sub">Log a Putt Maister session to populate this</div>
       </div>`;
+
+  // Within-window figures. The scalar columns are cumulative as-of period_end,
+  // so anything that should describe *this window only* is aggregated from the
+  // date-carrying grains instead.
+  const win = aggregateRange(selected, selected.period_start, selected.period_end);
 
   el.innerHTML = `
     ${ratingKpi}
-    ${proKpi}
+    ${puttKpi}
     <div class="kpi reveal">
       <div class="kpi-label">Practice streak</div>
       <div class="kpi-value"><span data-count></span><span class="unit">days</span></div>
-      <div class="kpi-sub">“Kept at it” streak — gaps ≤ 2 days count as continuous</div>
+      <div class="kpi-sub">“Kept at it” streak — gaps ≤ 2 days count as continuous, not consecutive days</div>
     </div>
     <div class="kpi reveal">
-      <div class="kpi-label">Data through</div>
-      <div class="kpi-value" style="font-size:26px; padding-top:7px">${fmtDate(selected.computed_at)}</div>
-      <div class="kpi-sub">${selected.rounds_count ?? '—'} rounds by Bram in the dataset</div>
+      <div class="kpi-label">In this window</div>
+      <div class="kpi-value" style="font-size:32px">${win.rounds_count}<span class="unit">round${win.rounds_count === 1 ? '' : 's'}</span></div>
+      <div class="kpi-sub">${win.active_days} active day${win.active_days === 1 ? '' : 's'} · ${win.activity_hours} h tracked<br>Data through ${fmtDate(selected.computed_at)}</div>
     </div>`;
 
-  const counts = el.querySelectorAll('[data-count]');
-  countUp(counts[0], everyday ?? selected.pdga_everyday_estimate);
-  if (lastM.pro_par_or_better_pct != null) {
-    countUp(counts[1], lastM.pro_par_or_better_pct, { decimals: 1 });
-    countUp(counts[2], selected.practice_streak_days);
+  const c = el.querySelectorAll('[data-count]');
+  countUp(c[0], everyday ?? selected.pdga_everyday_estimate);
+  if (c1?.pct != null) {
+    countUp(c[1], c1.pct, { decimals: 1 });
+    countUp(c[2], selected.practice_streak_days);
   } else {
-    countUp(counts[1], selected.practice_streak_days);
+    countUp(c[1], selected.practice_streak_days);
   }
 }
 
-// ── Coaching highlight strip (under the KPI row) ──────────────────────
-// Renders the STORED headline + priority titles as a prominent pointer to
-// the full panel. No coaching text is generated here.
+// ── Period context banner ─────────────────────────────────────────────
+// States exactly which window is on screen and whether it is coached.
+export function renderPeriodContext(state) {
+  const p = state.selected;
+  const host = $('#period-context');
+  const coached = state.evalByPeriod.has(p.period_label);
+  const typeLabel = { month: 'Monthly evaluation', checkin: 'On-demand check-in', custom: 'Custom period' }[p.period_type] || 'Period';
+  const fmtD = iso => iso ? new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—';
+
+  host.innerHTML = `
+    <div class="period-context reveal">
+      <div>
+        <span class="period-type ${esc(p.period_type)}">${esc(typeLabel)}</span>
+        <span class="period-window">${fmtD(p.period_start)} → ${fmtD(p.period_end)}</span>
+      </div>
+      <span class="period-coached ${coached ? 'yes' : 'no'}">${coached ? '✓ Evaluated' : 'Not yet evaluated'}</span>
+    </div>`;
+}
+
+// ── Coaching highlight strip ──────────────────────────────────────────
 export function renderCoachStrip(state) {
   const host = $('#coach-strip');
   const row = state.evalByPeriod.get(state.selected.period_label);
 
   if (!row) {
-    // most recent period that has an evaluation, for one-tap navigation
     const latest = state.periods.find(p => state.evalByPeriod.has(p.period_label));
     host.innerHTML = `
       <div class="coach-strip coach-strip-empty reveal">
         <span class="coach-strip-tag">Coaching</span>
         <span class="coach-strip-note">No evaluation for this period yet.</span>
-        ${latest ? `<button class="coach-strip-link" data-goto="${latest.period_label}">Latest evaluation · ${monthName(latest.period_label)} →</button>` : ''}
+        ${latest ? `<button class="coach-strip-link" data-goto="${esc(latest.period_label)}">Latest evaluation · ${esc(periodName(latest))} →</button>` : ''}
       </div>`;
     host.querySelector('[data-goto]')?.addEventListener('click', e => {
       const picker = document.getElementById('period-picker');
@@ -161,7 +170,7 @@ export function renderCoachStrip(state) {
   host.innerHTML = `
     <a class="coach-strip reveal" href="#coaching">
       <div class="coach-strip-head">
-        <span class="coach-strip-tag">Coaching focus · ${esc(state.selected.period_label)}</span>
+        <span class="coach-strip-tag">Coaching focus · ${esc(periodName(state.selected))}</span>
         <span class="coach-strip-cta">Full evaluation ↓</span>
       </div>
       <div class="coach-strip-headline">${esc(row.headline)}</div>
@@ -200,7 +209,7 @@ export function renderEval(state) {
 
   host.innerHTML = `
     <div class="eval-panel reveal">
-      <div class="eval-tag">Coaching evaluation · ${esc(state.selected.period_label)}</div>
+      <div class="eval-tag">Coaching evaluation · ${esc(periodName(state.selected, { withRange: true }))}</div>
       <h3 class="eval-headline">${esc(row.headline)}</h3>
       <div class="eval-narrative">${md(row.narrative_md)}</div>
       ${prios ? `<div class="eval-priorities">${prios}</div>` : ''}
@@ -217,33 +226,21 @@ export function renderEval(state) {
 export function renderRating(state) {
   const host = $('#rating-section');
   const s = state.selected;
-  // Prefer the rolling Everyday series; fall back to the monthly mean until
-  // the backend column lands. Label says which one is on screen.
   const hasEveryday = s.monthly_trend.some(m => m.everyday_rating != null);
   const heroValue = s.udisc_everyday_rating
-    ?? [...s.monthly_trend].reverse().find(m => m.everyday_rating != null)?.everyday_rating
-    ?? s.monthly_trend.at(-1)?.avg_rating ?? null;
-  const heroBasis = s.udisc_everyday_rating != null
-    ? (s.udisc_everyday_basis || 'best 8 of last 20 rated rounds')
-    : (hasEveryday ? 'best 8 of last 20 rated rounds' : 'monthly average — Everyday rating not published yet');
-  const prevEveryday = state.prev?.udisc_everyday_rating ?? null;
-  const heroDelta = (s.udisc_everyday_rating != null && prevEveryday != null)
-    ? deltaBadge(s.udisc_everyday_rating - prevEveryday) : '';
+    ?? [...s.monthly_trend].reverse().find(m => m.everyday_rating != null)?.everyday_rating ?? null;
+  const heroBasis = s.udisc_everyday_basis || 'best 8 of last 20 rated rounds';
 
   host.innerHTML = `
     <div class="grid2">
       <div class="card reveal">
         <div class="rating-hero">
-          <div>
-            <div class="rating-hero-label">Current UDisc rating</div>
-            <div class="rating-hero-value"><span data-hero></span>${heroDelta}</div>
-            <div class="rating-hero-sub">${esc(heroBasis)}</div>
-          </div>
+          <div class="rating-hero-label">Current UDisc rating</div>
+          <div class="rating-hero-value"><span data-hero></span></div>
+          <div class="rating-hero-sub">${esc(heroBasis)} · Est. PDGA ${s.pdga_everyday_estimate ?? '—'}</div>
         </div>
         <div class="chart-box" data-chart="rating"></div>
-        <div class="chart-caveat" title="Rating asymmetry across layouts is large — even par is worth 202 on Pro but 138 on summer league.">
-          ⚠ Mixes layouts — venue changes can read as rating swings
-        </div>
+        <div class="chart-caveat">⚠ Ratings are not comparable across layouts — even par is worth 202 on Pro, 138 on summer league</div>
       </div>
       <div class="card reveal">
         <h3>Rounds per month</h3>
@@ -252,9 +249,8 @@ export function renderRating(state) {
       </div>
     </div>`;
 
-  const trend = state.selected.monthly_trend;
+  const trend = s.monthly_trend;
   const anchorRow = anchorFor(state.layout, state.bench);
-
   countUp(host.querySelector('[data-hero]'), heroValue);
 
   lineChart(host.querySelector('[data-chart="rating"]'), trend.map(m => ({
@@ -263,9 +259,9 @@ export function renderRating(state) {
     title: monthName(m.month),
     rows: [
       ...(hasEveryday ? [['Everyday rating', m.everyday_rating ?? '—']] : []),
-      ['Month average', m.avg_rating],
+      ['Month average', m.avg_rating ?? '—'],
       ['Est. PDGA', (hasEveryday ? m.everyday_pdga_est : m.pdga_est) ?? '—'],
-      ['Rounds', m.rounds],
+      ['Rounds', m.rounds ?? 0],
     ],
   })), {
     unit: hasEveryday ? 'Everyday rating' : 'UDisc rating',
@@ -277,30 +273,172 @@ export function renderRating(state) {
     value: m.rounds,
     em: i === trend.length - 1,
     title: monthName(m.month),
-    rows: [['Rounds', m.rounds]],
-  })), { yAxis: true, maxBarW: 38 });
+    rows: [['Rounds', m.rounds ?? 0], ['Active days', m.active_days ?? '—']],
+  })), { maxBarW: 38 });
 }
 
-// ── Scoring & problem holes ───────────────────────────────────────────
-export function renderScoring(state) {
-  const host = $('#scoring-section');
-  const mode = state.scoringMode || 'pro';
-  const layouts = Object.keys(state.selected.par_or_better_pct_by_layout);
-  const leakLayouts = Object.keys(state.selected.hole_leak_table);
-  const leakLayout = leakLayouts.includes(state.layout) ? state.layout : (leakLayouts.includes('Pro') ? 'Pro' : leakLayouts[0]);
+// ── Putting ───────────────────────────────────────────────────────────
+export function renderPutting(state) {
+  const host = $('#putting-section');
+  const s = state.selected;
+  const p = s.putting_summary;
+  const byDist = s.putting_by_distance;
+
+  if (!p || !byDist) {
+    host.innerHTML = `<div class="empty-card reveal"><h4>No putting data for this period</h4>
+      <p>Putt Maister sessions populate this section.</p></div>`;
+    return;
+  }
+
+  const buckets = Object.entries(byDist)
+    .map(([k, v]) => ({ m: metres(k), key: k, ...v }))
+    .filter(b => Number.isFinite(b.m))
+    .sort((a, b) => a.m - b.m);
+
+  const totalAttempts = buckets.reduce((t, b) => t + b.attempts, 0);
+  const thin = buckets.filter(b => b.attempts < MIN_PUTT_ATTEMPTS);
+  const top = [...buckets].sort((a, b) => b.attempts - a.attempts)[0];
+  const concentration = top ? Math.round(top.attempts / totalAttempts * 100) : 0;
+
+  // Freshness: stale putting data should nudge, not silently read as current.
+  const daysSince = p.last_session
+    ? Math.floor((Date.now() - new Date(`${p.last_session}T00:00:00Z`)) / 86400000) : null;
 
   host.innerHTML = `
-    <div class="grid2">
+    <div class="putt-headline card reveal">
+      <div class="putt-gap">
+        <div>
+          <div class="kpi-label">C1 make rate · inside 10m</div>
+          <div class="putt-big"><span data-putt></span><span class="unit">%</span></div>
+          <div class="note" style="margin:0">${p.c1.made} of ${p.c1.attempts} putts · ${p.c1.sessions} sessions</div>
+        </div>
+        <div class="putt-target">
+          <div class="putt-target-row"><span>Target</span><b>${p.c1.target_pct}%</b></div>
+          <div class="putt-bar"><div class="putt-bar-fill" data-w="${(p.c1.pct / p.c1.target_pct) * 100}"></div>
+            <div class="putt-bar-target" style="left:100%"></div></div>
+          <div class="putt-gap-note">${(p.c1.target_pct - p.c1.pct).toFixed(1)} points to target</div>
+        </div>
+      </div>
+      ${daysSince !== null && daysSince > 14 ? `<div class="chart-caveat">⚠ Last putting session ${daysSince} days ago (${fmtDate(p.last_session)}) — these numbers are not current</div>` : ''}
+    </div>
+
+    <div class="grid2" style="margin-top:14px">
       <div class="card reveal">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; flex-wrap:wrap">
-          <div><h3>Par-or-better trend</h3><p class="note">Share of holes played at par or better</p></div>
-          <div class="seg-toggle">
-            <button data-mode="pro" class="${mode === 'pro' ? 'active' : ''}">Pro layout</button>
-            <button data-mode="all" class="${mode === 'all' ? 'active' : ''}">All layouts</button>
+        <h3>Make rate by distance</h3>
+        <p class="note">Per metre, all-time — muted bars have fewer than ${MIN_PUTT_ATTEMPTS} attempts</p>
+        <div class="chart-box" data-chart="make"></div>
+        ${thin.length ? `<div class="chart-caveat">⚠ ${thin.map(b => b.key).join(', ')} rest on ${thin.map(b => b.attempts).join('/')} attempts — differences at these distances are noise, not a cliff</div>` : ''}
+      </div>
+
+      <div class="card reveal">
+        <h3>Where the reps go</h3>
+        <p class="note">Attempts per distance — coverage, not volume, is the gap</p>
+        <div class="chart-box" data-chart="dist"></div>
+        ${top ? `<div class="chart-caveat neutral">${concentration}% of all attempts are at ${top.key}</div>` : ''}
+      </div>
+    </div>
+
+    <div class="grid2" style="margin-top:14px">
+      <div class="card reveal">
+        <h3>Practice format</h3>
+        <p class="note">Two different session types, side by side</p>
+        <div class="chart-box" data-chart="fmt"></div>
+        <div class="legend">
+          ${Object.entries(p.by_session_type).map(([k, v], i) =>
+            `<span class="legend-item"><span class="legend-swatch" style="background:${i ? COLORS.blue : COLORS.limeDeep}"></span>${esc(k)} · ${v.attempts} putts</span>`).join('')}
+        </div>
+      </div>
+      <div class="card reveal">
+        <h3>Circle coverage</h3>
+        <p class="note">C1 is inside 10m · C2 is 10–20m</p>
+        <div class="circle-rows">
+          <div class="circle-row">
+            <div><b>C1</b><span class="n-tag">${p.c1.attempts} putts</span></div>
+            <div class="circle-pct">${p.c1.pct}%</div>
+          </div>
+          <div class="circle-row empty">
+            <div><b>C2</b><span class="n-tag thin">0 putts</span></div>
+            <div class="circle-pct muted">—</div>
           </div>
         </div>
+        <p class="note" style="margin-top:12px">Every logged putt so far is inside C1. There is no C2 data to chart — not a gap in the dashboard, a gap in the practice log.</p>
+      </div>
+    </div>`;
+
+  countUp(host.querySelector('[data-putt]'), p.c1.pct, { decimals: 1 });
+  requestAnimationFrame(() => requestAnimationFrame(() =>
+    host.querySelectorAll('[data-w]').forEach(b => b.style.width = `${Math.min(100, b.dataset.w)}%`)));
+
+  barChart(host.querySelector('[data-chart="make"]'), buckets.map(b => ({
+    label: b.key,
+    value: b.pct,
+    em: b.attempts >= MIN_PUTT_ATTEMPTS,
+    dim: b.attempts < MIN_PUTT_ATTEMPTS,
+    title: `${b.key} · ${b.attempts} attempts`,
+    rows: [['Make rate', `${b.pct}%`], ['Made', `${b.made} / ${b.attempts}`]],
+  })), {
+    max: 100, yFmt: v => `${v}%`,
+    target: { value: p.c1.target_pct, label: `target ${p.c1.target_pct}%` },
+  });
+
+  barChart(host.querySelector('[data-chart="dist"]'), buckets.map(b => ({
+    label: b.key,
+    value: b.attempts,
+    em: b === top,
+    title: `${b.key}`,
+    rows: [['Attempts', b.attempts], ['Share', `${Math.round(b.attempts / totalAttempts * 100)}%`]],
+  })), { yFmt: v => v });
+
+  // One measure, one axis: make rate only. Session and attempt counts are
+  // different units and belong in the labels, not as bars on a % scale.
+  const types = Object.entries(p.by_session_type);
+  barChart(host.querySelector('[data-chart="fmt"]'), types.map(([name, v], i) => ({
+    label: name,
+    value: v.pct,
+    em: true,
+    color: i ? COLORS.blue : COLORS.limeDeep,
+    title: name,
+    rows: [['Make rate', `${v.pct}%`], ['Putts', `${v.made} / ${v.attempts}`], ['Sessions', v.sessions]],
+  })), { max: 100, yFmt: v => `${v}%`, height: 200, maxBarW: 64 });
+}
+
+// ── Scoring: patterns first, holes as drill-down ──────────────────────
+export function renderScoring(state) {
+  const host = $('#scoring-section');
+  const s = state.selected;
+  const byPar = s.scoring_by_par;
+  const leakLayouts = Object.keys(s.hole_leak_table);
+  const leakLayout = leakLayouts.includes(state.layout) ? state.layout
+    : (leakLayouts.includes('Pro') ? 'Pro' : leakLayouts[0]);
+
+  const parRows = byPar ? Object.entries(byPar).map(([k, v]) => ({ key: k, label: k.replace('par', 'Par '), ...v })) : [];
+
+  host.innerHTML = `
+    ${byPar ? `
+    <div class="card reveal">
+      <h3>Scoring by par</h3>
+      <p class="note">Strokes over par is the fair comparison — birdie rate is structurally easier on longer holes</p>
+      <div class="chart-box" data-chart="par"></div>
+      <table class="data-table" style="margin-top:14px">
+        <thead><tr><th>Par</th><th class="num">Avg over</th><th class="num">Par or better</th><th class="num">Birdie</th><th class="num">Double+</th><th class="num">Holes</th></tr></thead>
+        <tbody>${parRows.map(p => `
+          <tr>
+            <td style="font-family:var(--font-display); font-weight:600">${esc(p.label)}</td>
+            <td class="num${p.avg_over <= 0 ? ' good' : ''}">${p.avg_over > 0 ? '+' : ''}${p.avg_over}</td>
+            <td class="num">${p.par_or_better_pct}%</td>
+            <td class="num">${p.birdie_pct}%</td>
+            <td class="num${p.double_pct >= 7 ? ' hot' : ''}">${p.double_pct}%</td>
+            <td class="num muted">${p.holes}</td>
+          </tr>`).join('')}</tbody>
+      </table>
+    </div>` : ''}
+
+    <div class="grid2" style="margin-top:14px">
+      <div class="card reveal">
+        <h3>Par-or-better trend</h3>
+        <p class="note">Share of holes played at par or better, per month</p>
         <div class="chart-box" data-chart="pob"></div>
-        ${mode === 'all' ? `<div class="chart-caveat">⚠ Mixed layouts — softer venues inflate later months</div>` : ''}
+        <div class="chart-caveat">⚠ Mixes layouts — softer venues lift later months</div>
       </div>
 
       <div class="card reveal">
@@ -309,16 +447,9 @@ export function renderScoring(state) {
         <div data-list="layouts"></div>
         <div class="chart-caveat" data-caveat="sample"></div>
       </div>
+    </div>
 
-      <div class="card reveal">
-        <h3>Problem holes · ${esc(leakLayout)}${sampleTag(layoutCount(state, leakLayout))}</h3>
-        <p class="note">Five costliest holes, worst first${leakLayouts.length > 1 ? ' — switch layout in the header' : ''}</p>
-        <table class="data-table">
-          <thead><tr><th>Hole</th><th style="width:44%">Avg over par</th><th class="num">Double+ %</th></tr></thead>
-          <tbody data-list="leaks"></tbody>
-        </table>
-      </div>
-
+    <div class="grid2" style="margin-top:14px">
       <div class="card reveal">
         <h3>Pressure split</h3>
         <p class="note">Saturday rounds = competitive (heuristic), rest = practice</p>
@@ -328,80 +459,85 @@ export function renderScoring(state) {
           <span class="legend-item"><span class="legend-swatch" style="background:${COLORS.blue}"></span>Practice</span>
         </div>
       </div>
+
+      <details class="card reveal drill">
+        <summary><h3 style="display:inline">Problem holes · ${esc(leakLayout)}</h3>${sampleTag(layoutCount(state, leakLayout))}
+          <span class="drill-hint">course-specific detail — expand</span></summary>
+        <p class="note" style="margin-top:10px">Five costliest holes on this layout, worst first. Switch layout in the header.</p>
+        <table class="data-table">
+          <thead><tr><th>Hole</th><th style="width:44%">Avg over par</th><th class="num">Double+ %</th></tr></thead>
+          <tbody data-list="leaks"></tbody>
+        </table>
+      </details>
     </div>`;
 
-  host.querySelectorAll('.seg-toggle button').forEach(btn =>
-    btn.addEventListener('click', () => { state.scoringMode = btn.dataset.mode; renderScoring(state); }));
+  // by-par chart — avg_over leads, per the fair-comparison rule
+  if (byPar) {
+    barChart(host.querySelector('[data-chart="par"]'), parRows.map(p => ({
+      label: p.label,
+      value: p.avg_over,
+      em: true,
+      dim: p.holes < 60,
+      title: `${p.label} · ${p.holes} holes`,
+      rows: [
+        ['Avg over par', p.avg_over],
+        ['Par or better', `${p.par_or_better_pct}%`],
+        ['Birdie', `${p.birdie_pct}%`],
+        ['Double+', `${p.double_pct}%`],
+      ],
+    })), { yFmt: v => v.toFixed(2), height: 190 });
+  }
 
-  // par-or-better trend
-  const trend = state.selected.monthly_trend;
+  const trend = s.monthly_trend;
   barChart(host.querySelector('[data-chart="pob"]'), trend.map((m, i) => ({
     label: monthName(m.month, { short: true, year: false }),
-    value: mode === 'pro' ? m.pro_par_or_better_pct : m.par_or_better_pct,
+    value: m.par_or_better_pct,
     em: i === trend.length - 1,
-    dim: mode === 'all',
     title: monthName(m.month),
     rows: [
+      ['All layouts', `${m.par_or_better_pct ?? '—'}%`],
       ['Pro layout', m.pro_par_or_better_pct != null ? `${m.pro_par_or_better_pct}%` : 'no Pro rounds'],
-      ['All layouts', `${m.par_or_better_pct}%`],
-      ['Birdie % (mixed)', `${m.birdie_pct}%`],
-      ['Double+ %', `${m.double_pct}%`],
+      ['Double+', `${m.double_pct ?? '—'}%`],
     ],
   })), { max: 100, yFmt: v => `${v}%` });
 
-  // layout list (HTML bars — long names need room)
+  // layouts
   const listHost = host.querySelector('[data-list="layouts"]');
-  const counts = state.selected.rounds_by_layout;
-  const entries = Object.entries(state.selected.par_or_better_pct_by_layout).sort((a, b) => b[1] - a[1]);
+  const counts = s.rounds_by_layout;
+  const entries = Object.entries(s.par_or_better_pct_by_layout).sort((a, b) => b[1] - a[1]);
   listHost.innerHTML = entries.map(([name, pct]) => {
     const active = name === state.layout;
     const n = layoutCount(state, name);
-    // Thin samples stay visible but must not read as solid as a 17-round layout.
-    const thin = n !== null && n < MIN_SOLID;
+    const isThin = n !== null && n < MIN_SOLID;
     return `
-    <div class="layout-row${thin ? ' thin' : ''}">
+    <div class="layout-row${isThin ? ' thin' : ''}">
       <div>
         <div class="layout-name${active ? ' active' : ''}">${esc(name)}${sampleTag(n)}</div>
-        <div class="layout-track">
-          <div class="layout-fill${active ? ' active' : ''}" style="width:0%" data-w="${pct}"></div>
-        </div>
+        <div class="layout-track"><div class="layout-fill${active ? ' active' : ''}" style="width:0%" data-w="${pct}"></div></div>
       </div>
       <div class="layout-pct${active ? ' active' : ''}">${pct}%</div>
     </div>`;
   }).join('');
 
   const caveat = host.querySelector('[data-caveat="sample"]');
-  if (!counts) {
-    caveat.innerHTML = '⚠ Sample sizes vary — round counts per layout not published yet, so treat these as unequal evidence';
-  } else if (entries.some(([name]) => (layoutCount(state, name) ?? 99) < MIN_SOLID)) {
+  if (!counts) caveat.innerHTML = '⚠ Round counts per layout not published yet — treat these as unequal evidence';
+  else if (entries.some(([n]) => (layoutCount(state, n) ?? 99) < MIN_SOLID))
     caveat.innerHTML = `⚠ Muted rows have fewer than ${MIN_SOLID} rounds — directional only`;
-  } else {
-    caveat.remove();
-  }
-  requestAnimationFrame(() => requestAnimationFrame(() =>
-    listHost.querySelectorAll('[data-w]').forEach(b => b.style.width = `${b.dataset.w}%`)));
+  else caveat.remove();
 
-  // hole leaks
-  const leaks = state.selected.hole_leak_table[leakLayout] || [];
+  // leaks
+  const leaks = s.hole_leak_table[leakLayout] || [];
   const maxOver = Math.max(...leaks.map(l => l.avgOver), 0.01);
-  const leakN = layoutCount(state, leakLayout);
-  if (leakN !== null && leakN < MIN_TREND) {
-    const note = document.createElement('div');
-    note.className = 'chart-caveat';
-    note.textContent = `⚠ Only ${leakN} round${leakN === 1 ? '' : 's'} here — single-round holes show as 0% or 100%`;
-    host.querySelector('[data-list="leaks"]').closest('.card').appendChild(note);
-  }
   host.querySelector('[data-list="leaks"]').innerHTML = leaks.length ? leaks.map(l => `
     <tr>
       <td style="font-family:var(--font-display); font-weight:600">${esc(l.hole)}</td>
       <td><span class="leak-bar" style="width:${Math.round((l.avgOver / maxOver) * 100)}px"></span>
           <span style="margin-left:8px; font-variant-numeric:tabular-nums">+${Number(l.avgOver).toFixed(2)}</span></td>
       <td class="num ${l.doublePct >= 15 ? 'hot' : ''}">${Number(l.doublePct).toFixed(1)}%</td>
-    </tr>`).join('')
-    : `<tr><td colspan="3" style="color:var(--faint)">No leak data for this layout</td></tr>`;
+    </tr>`).join('') : `<tr><td colspan="3" style="color:var(--faint)">No leak data for this layout</td></tr>`;
 
-  // pressure split
-  const ps = state.selected.pressure_split;
+  // pressure
+  const ps = s.pressure_split;
   if (ps) {
     groupedBars(host.querySelector('[data-chart="pressure"]'), [
       { label: 'Birdie %', a: ps.competitive?.birdiePct ?? null, b: ps.practice?.birdiePct ?? null },
@@ -411,83 +547,77 @@ export function renderScoring(state) {
   } else {
     host.querySelector('[data-chart="pressure"]').innerHTML = '<p class="note">No pressure data for this period.</p>';
   }
-}
 
-// ── Driving (no backend data yet) ─────────────────────────────────────
-export function renderDriving() {
-  $('#driving-section').innerHTML = `
-    <div class="empty-card reveal">
-      <svg class="empty-icon" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-        <ellipse cx="20" cy="20" rx="16" ry="9" stroke="currentColor" stroke-width="2"/>
-        <path d="M4 20c10-3 22-3 32 0" stroke="currentColor" stroke-width="1.5"/>
-      </svg>
-      <h4>TechDisc data isn’t in the pipeline yet</h4>
-      <p>Throw speed, spin, nose angle and the disc engagement window will render here once the backend ingests TechDisc exports.</p>
-      <span class="req-chip">Requested from backend · _contract/requests/</span>
-    </div>`;
-}
-
-// ── Putting ───────────────────────────────────────────────────────────
-export function renderPutting(state) {
-  const host = $('#putting-section');
-  host.innerHTML = `
-    <div class="card reveal">
-      <h3>Make % by distance</h3>
-      <p class="note">All-time, 5 ft buckets · Putt Maister sessions</p>
-      <div class="chart-box" data-chart="putting"></div>
-    </div>`;
-
-  const buckets = Object.entries(state.selected.putting_pct_by_distance)
-    .map(([k, v]) => ({ ft: parseInt(k), pct: v }))
-    .filter(b => Number.isFinite(b.ft))
-    .sort((a, b) => a.ft - b.ft);
-
-  const target = state.bench.find(b => b.metric === 'c1_putting_target_pct');
-
-  barChart(host.querySelector('[data-chart="putting"]'), buckets.map(b => ({
-    label: `${b.ft} ft`,
-    value: b.pct,
-    em: true,
-    title: `${b.ft} ft`,
-    rows: [['Make rate', `${b.pct}%`]],
-  })), {
-    max: 100, yFmt: v => `${v}%`,
-    target: target ? { value: target.benchmark_value, label: `C1 target ${target.benchmark_value}%` } : null,
-  });
+  requestAnimationFrame(() => requestAnimationFrame(() =>
+    listHost.querySelectorAll('[data-w]').forEach(b => b.style.width = `${b.dataset.w}%`)));
 }
 
 // ── Activity & health ─────────────────────────────────────────────────
 export function renderActivity(state) {
   const s = state.selected;
   const host = $('#activity-section');
+  // Within-window, not the cumulative-as-of scalars — a check-in over 16 days
+  // must not report the same hours as the month that contains it.
+  const win = aggregateRange(s, s.period_start, s.period_end);
+  const cal = activityCalendar(s);
+  const trackedFrom = s.activity_sessions[0]?.date;
+
   host.innerHTML = `
-    <div class="grid3">
-      <div class="kpi reveal">
-        <div class="kpi-label">Practice streak</div>
-        <div class="kpi-value"><span data-count></span><span class="unit">days</span></div>
-        <div class="kpi-sub">Gaps ≤ 2 days count as continuous — a “kept at it” measure, not consecutive days</div>
-      </div>
-      <div class="kpi reveal">
-        <div class="kpi-label">Activity hours · all-time</div>
-        <div class="kpi-value"><span data-count></span><span class="unit">h</span></div>
-        <div class="kpi-sub">Cumulative disc golf activity from Apple Watch</div>
-      </div>
-      <div class="kpi reveal">
-        <div class="kpi-label">Energy burned · all-time</div>
-        <div class="kpi-value"><span data-count></span><span class="unit">kcal</span></div>
-        <div class="kpi-sub">Disc golf workouts only</div>
+    <div class="card reveal">
+      <h3>Days played &amp; practised</h3>
+      <p class="note">Every round and tracked session${trackedFrom ? ` · Apple Watch tracking begins ${fmtDate(trackedFrom)}` : ''}</p>
+      <div class="contrib-wrap" data-chart="contrib"></div>
+      <div class="legend">
+        <span class="legend-item"><span class="legend-swatch contrib-key tracked"></span>Tracked session — shade by duration</span>
+        <span class="legend-item"><span class="legend-swatch contrib-key round-only"></span>Round played, no watch data</span>
       </div>
     </div>
-    <div class="empty-card reveal" style="margin-top:14px">
-      <h4>Heart-rate trend isn’t published yet</h4>
-      <p>Monthly HR and hours series need a backend aggregate — requested; renders here when it lands.</p>
-      <span class="req-chip">Requested from backend · _contract/requests/</span>
+
+    <div class="grid3" style="margin-top:14px">
+      <div class="kpi reveal">
+        <div class="kpi-label">Active days · this window</div>
+        <div class="kpi-value"><span data-count></span></div>
+        <div class="kpi-sub">${win.session_count} tracked session${win.session_count === 1 ? '' : 's'} · ${win.rounds_count} round${win.rounds_count === 1 ? '' : 's'}</div>
+      </div>
+      <div class="kpi reveal">
+        <div class="kpi-label">Hours · this window</div>
+        <div class="kpi-value"><span data-count></span><span class="unit">h</span></div>
+        <div class="kpi-sub">All-time ${s.weekly_activity_hours_total ?? '—'} h (cumulative)</div>
+      </div>
+      <div class="kpi reveal">
+        <div class="kpi-label">Energy · this window</div>
+        <div class="kpi-value"><span data-count></span><span class="unit">kcal</span></div>
+        <div class="kpi-sub">All-time ${s.total_calories?.toLocaleString('en-GB') ?? '—'} kcal (cumulative)</div>
+      </div>
+    </div>
+
+    <div class="card reveal" style="margin-top:14px">
+      <h3>Heart rate</h3>
+      <p class="note">Per month, from tracked disc golf sessions</p>
+      <div class="chart-box" data-chart="hr"></div>
     </div>`;
 
-  const counts = host.querySelectorAll('[data-count]');
-  countUp(counts[0], s.practice_streak_days);
-  countUp(counts[1], s.weekly_activity_hours_total, { decimals: 1 });
-  countUp(counts[2], s.total_calories);
+  contributionGraph(host.querySelector('[data-chart="contrib"]'), cal);
+
+  const c = host.querySelectorAll('[data-count]');
+  countUp(c[0], win.active_days);
+  countUp(c[1], win.activity_hours, { decimals: 1 });
+  countUp(c[2], win.activity_calories);
+
+  const hrMonths = s.monthly_trend.filter(x => x.avg_hr != null);
+  if (hrMonths.length >= 2) {
+    lineChart(host.querySelector('[data-chart="hr"]'), hrMonths.map(x => ({
+      x: monthName(x.month, { short: true, year: false }),
+      y: x.avg_hr,
+      title: monthName(x.month),
+      rows: [['Average', `${x.avg_hr} bpm`], ['Max', `${x.max_hr ?? '—'} bpm`], ['Min', `${x.min_hr ?? '—'} bpm`]],
+    })), { unit: 'bpm', height: 190 });
+  } else {
+    host.querySelector('[data-chart="hr"]').innerHTML =
+      `<p class="note">${hrMonths.length === 1
+        ? `Only one month of tracked heart-rate data so far (${monthName(hrMonths[0].month)}: ${hrMonths[0].avg_hr} bpm average, ${hrMonths[0].max_hr} max). A trend needs two.`
+        : 'No tracked heart-rate data yet.'}</p>`;
+  }
 }
 
 // ── Benchmarks ────────────────────────────────────────────────────────
@@ -500,15 +630,13 @@ export function renderBenchmarks(state) {
 
   const targetRows = targets.map(t => {
     const max = Math.max(t.benchmark_value, current) * 1.1;
-    const fillPct = Math.min(100, (current / max) * 100);
-    const markPct = (t.benchmark_value / max) * 100;
     const gap = t.benchmark_value - current;
     return `
       <div class="bench-row">
         <div class="bench-name">${esc(t.notes || t.metric)}<small>${esc(t.unit)}</small></div>
         <div class="bench-track">
-          <div class="bench-fill" style="width:0%" data-w="${fillPct}"></div>
-          <div class="bench-marker" style="left:${markPct}%" data-label="${t.benchmark_value}"></div>
+          <div class="bench-fill" style="width:0%" data-w="${Math.min(100, (current / max) * 100)}"></div>
+          <div class="bench-marker" style="left:${(t.benchmark_value / max) * 100}%" data-label="${t.benchmark_value}"></div>
         </div>
         <div class="bench-gap" style="color:${gap > 0 ? 'var(--warn)' : 'var(--lime)'}">${gap > 0 ? `−${gap}` : `+${Math.abs(gap)}`}<small>${gap > 0 ? 'to target' : 'past target'}</small></div>
       </div>`;
@@ -529,40 +657,109 @@ export function renderBenchmarks(state) {
       <div class="anchor-chips">
         ${anchors.map(a => {
           const active = anchorFor(state.layout, state.bench)?.metric === a.metric;
-          const label = a.metric.replace(/^even_par_rating_/, '').replace(/_/g, ' ');
-          return `<span class="anchor-chip ${active ? 'active' : ''}">${esc(label)} even par ≈ <b>${a.benchmark_value}</b></span>`;
+          return `<span class="anchor-chip ${active ? 'active' : ''}">${esc(a.metric.replace(/^even_par_rating_/, '').replace(/_/g, ' '))} even par ≈ <b>${a.benchmark_value}</b></span>`;
         }).join('')}
       </div>
-      <p class="note" style="margin:12px 0 0">Even-par anchors show how much rating a venue is “worth” — a 64-point spread between Pro and summer league. That is why the rating chart carries a layout caveat.</p>
+      <p class="note" style="margin:12px 0 0">Even-par anchors show how much rating a venue is “worth” — a 64-point spread between Pro and summer league.</p>
     </div>`;
 
   requestAnimationFrame(() => requestAnimationFrame(() =>
     host.querySelectorAll('[data-w]').forEach(b => b.style.width = `${b.dataset.w}%`)));
 }
 
-// ── Bag ───────────────────────────────────────────────────────────────
-export function renderBag() {
-  $('#bag-section').innerHTML = `
-    <div class="empty-card reveal">
-      <svg class="empty-icon" viewBox="0 0 40 40" fill="none" aria-hidden="true">
-        <path d="M12 14h16l-2 20H14l-2-20Z" stroke="currentColor" stroke-width="2"/>
-        <path d="M15 14a5 5 0 0 1 10 0" stroke="currentColor" stroke-width="2"/>
-      </svg>
-      <h4>Bag not documented yet</h4>
-      <p>This section renders manually curated gear from <code>disc_collection.md</code>. Add the file to the repo and the bag appears here.</p>
-      <span class="req-chip">Manual source · disc_collection.md</span>
+// ── Mode B: custom date range ─────────────────────────────────────────
+export function renderRange(state) {
+  const host = $('#range-section');
+  const s = state.selected;
+  const a = aggregateRange(s, state.rangeStart, state.rangeEnd);
+  const cal = activityCalendar({
+    rating_history: a.rounds,
+    activity_sessions: a.sessions,
+  });
+
+  const fmtR = d => new Date(`${d}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+
+  host.innerHTML = `
+    <div class="range-banner reveal">
+      <div>
+        <div class="range-title">${fmtR(a.start)} → ${fmtR(a.end)}</div>
+        <div class="range-sub">Raw progression · no coaching evaluation for custom ranges</div>
+      </div>
+      <div class="range-count">${a.rounds_count} round${a.rounds_count === 1 ? '' : 's'} · ${a.active_days} active day${a.active_days === 1 ? '' : 's'}</div>
+    </div>
+
+    <div class="kpis" style="margin-top:14px">
+      <div class="kpi kpi-accent reveal">
+        <div class="kpi-label">Best rating in range</div>
+        <div class="kpi-value"><span data-count></span></div>
+        <div class="kpi-sub">Average ${a.avg_rating ?? '—'} · latest ${a.latest_rating ?? '—'}</div>
+      </div>
+      <div class="kpi reveal">
+        <div class="kpi-label">C1 putting in range</div>
+        <div class="kpi-value">${a.putt_pct != null ? `<span data-count></span><span class="unit">%</span>` : '<span class="kpi-value-empty">No sessions</span>'}</div>
+        <div class="kpi-sub">${a.putt_attempts ? `${a.putt_made} of ${a.putt_attempts} · ${a.putt_session_count} sessions` : 'No putting logged in this range'}</div>
+      </div>
+      <div class="kpi reveal">
+        <div class="kpi-label">Hours</div>
+        <div class="kpi-value"><span data-count></span><span class="unit">h</span></div>
+        <div class="kpi-sub">${a.activity_calories.toLocaleString('en-GB')} kcal · ${a.session_count} sessions</div>
+      </div>
+      <div class="kpi reveal">
+        <div class="kpi-label">Heart rate</div>
+        <div class="kpi-value" style="font-size:30px">${a.avg_hr ?? '—'}<span class="unit">avg bpm</span></div>
+        <div class="kpi-sub">${a.max_hr ? `Peak ${a.max_hr} bpm` : 'No tracked sessions in range'}</div>
+      </div>
+    </div>
+
+    <div class="card reveal" style="margin-top:14px">
+      <h3>Rating progression</h3>
+      <p class="note">Per round in range — ratings are not comparable across layouts, so hover for the venue</p>
+      <div class="chart-box" data-chart="range-rating"></div>
+    </div>
+
+    <div class="card reveal" style="margin-top:14px">
+      <h3>Days played &amp; practised</h3>
+      <p class="note">Within the selected range</p>
+      <div class="contrib-wrap" data-chart="range-contrib"></div>
+    </div>
+
+    <div class="excluded-note reveal">
+      <b>Not shown for custom ranges</b>
+      <p>These are computed per calendar month, so they cannot be scoped to an arbitrary range without misrepresenting them:</p>
+      <ul>${MODE_B_EXCLUDES.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
+      <p class="excluded-cta">Switch to an evaluation period to see them, with the coaching analysis.</p>
     </div>`;
+
+  const c = host.querySelectorAll('[data-count]');
+  let i = 0;
+  countUp(c[i++], a.best_rating);
+  if (a.putt_pct != null) countUp(c[i++], a.putt_pct, { decimals: 1 });
+  countUp(c[i++], a.activity_hours, { decimals: 1 });
+
+  if (a.rounds.length >= 2) {
+    lineChart(host.querySelector('[data-chart="range-rating"]'), a.rounds.map(r => ({
+      x: new Date(`${r.date}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' }),
+      y: r.rating,
+      title: fmtR(r.date),
+      rows: [['Rating', r.rating], ['Layout', r.layout], ['Course', r.course]],
+    })), { unit: 'rating' });
+  } else {
+    host.querySelector('[data-chart="range-rating"]').innerHTML =
+      `<p class="note">${a.rounds.length === 1 ? 'One round in this range — a trend needs at least two.' : 'No rounds in this range.'}</p>`;
+  }
+
+  contributionGraph(host.querySelector('[data-chart="range-contrib"]'), cal, { start: a.start, end: a.end });
 }
 
 // ── Footer ────────────────────────────────────────────────────────────
 export function renderFooter(state) {
   const { metaRows } = state;
   const latest = metaRows.map(r => r.processed_at).sort().at(-1);
-  const runRows = metaRows.filter(r => r.processed_at && latest && r.processed_at.slice(0, 16) === latest.slice(0, 16));
+  const runRows = metaRows.filter(r => latest && r.processed_at?.slice(0, 16) === latest.slice(0, 16));
   const due = nextUploadDue(metaRows);
   $('#footer').innerHTML = `
     <span>Last pipeline run <b>${fmtDate(latest, { time: true })}</b></span>
-    <span>Files processed that run <b>${runRows.length}</b></span>
+    <span>Files processed <b>${runRows.length}</b></span>
     <span>Next scheduled run <b>${due.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</b></span>
     <span>Source <b>published Sheet CSV · no backend</b></span>`;
 }

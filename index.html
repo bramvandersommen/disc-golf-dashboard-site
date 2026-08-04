@@ -25,13 +25,25 @@
       </div>
     </div>
     <div class="controls">
-      <label class="control">
+      <div class="mode-switch" role="tablist" aria-label="View mode">
+        <button id="mode-period" class="active" role="tab">Evaluation period</button>
+        <button id="mode-range" role="tab">Custom range</button>
+      </div>
+      <label class="control" id="ctl-layout">
         <span class="control-label">Layout</span>
         <select id="layout-picker" aria-label="Layout filter"></select>
       </label>
-      <label class="control">
+      <label class="control" id="ctl-period">
         <span class="control-label">Period</span>
         <select id="period-picker" aria-label="Period"></select>
+      </label>
+      <label class="control range-ctl" id="ctl-from" hidden>
+        <span class="control-label">From</span>
+        <input type="date" id="range-from" aria-label="Range start">
+      </label>
+      <label class="control range-ctl" id="ctl-to" hidden>
+        <span class="control-label">To</span>
+        <input type="date" id="range-to" aria-label="Range end">
       </label>
     </div>
   </div>
@@ -39,8 +51,8 @@
     <a class="navpill" href="#overview">Overview</a>
     <a class="navpill" href="#coaching">Coaching</a>
     <a class="navpill" href="#rating">Rating</a>
-    <a class="navpill" href="#scoring">Scoring</a>
     <a class="navpill" href="#putting">Putting</a>
+    <a class="navpill" href="#scoring">Scoring</a>
     <a class="navpill" href="#activity">Activity</a>
     <a class="navpill" href="#benchmarks">Benchmarks</a>
   </nav>
@@ -56,8 +68,13 @@
   <div id="dash" class="dash" hidden>
 
     <section id="overview" class="section">
+      <div id="period-context"></div>
       <div class="kpis" id="kpi-row"></div>
       <div id="coach-strip"></div>
+    </section>
+
+    <section id="range" class="section" hidden>
+      <div id="range-section"></div>
     </section>
 
     <section id="coaching" class="section">
@@ -70,9 +87,15 @@
       <div id="rating-section"></div>
     </section>
 
+    <section id="putting" class="section">
+      <div class="seclabel">The measured ceiling</div>
+      <h2>Putting</h2>
+      <div id="putting-section"></div>
+    </section>
+
     <section id="scoring" class="section">
       <div class="seclabel">Scoring</div>
-      <h2>Scoring &amp; problem holes</h2>
+      <h2>Scoring patterns</h2>
       <div id="scoring-section"></div>
     </section>
 
@@ -81,12 +104,6 @@
       <div class="seclabel">Off the tee</div>
       <h2>Driving</h2>
       <div id="driving-section"></div>
-    </section>
-
-    <section id="putting" class="section">
-      <div class="seclabel">On the green</div>
-      <h2>Putting</h2>
-      <div id="putting-section"></div>
     </section>
 
     <section id="activity" class="section">

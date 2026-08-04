@@ -47,6 +47,9 @@
 
 /* ─── Reset / base ───────────────────────────────────────────────────── */
 * { box-sizing: border-box; }
+/* A `display` rule on a component beats the UA's [hidden] { display: none },
+   which would otherwise leave hidden controls occupying layout width. */
+[hidden] { display: none !important; }
 html { scroll-behavior: smooth; scroll-padding-top: 118px; }
 body {
   margin: 0;
@@ -444,6 +447,122 @@ select:hover, select:focus-visible { border-color: var(--lime-dim); outline: non
 .anchor-chip b { color: var(--ink); font-family: var(--font-display); }
 .anchor-chip.active { border-color: var(--lime-dim); color: var(--ink-2); }
 
+/* ─── Period context banner ──────────────────────────────────────────── */
+.period-context {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
+  padding: 11px 16px; border: 1px solid var(--line);
+  border-radius: var(--r-pill); background: var(--surface);
+}
+.period-type {
+  font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 600;
+  color: var(--lime); background: rgba(200,255,77,0.1);
+  border: 1px solid rgba(200,255,77,0.25); border-radius: var(--r-pill);
+  padding: 3px 10px; margin-right: 10px;
+}
+.period-type.checkin { color: var(--warn); background: rgba(255,207,107,0.1); border-color: rgba(255,207,107,0.28); }
+.period-type.custom { color: var(--muted); background: var(--surface-2); border-color: var(--line); }
+.period-window { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.period-coached { font-size: 11.5px; font-weight: 500; }
+.period-coached.yes { color: var(--lime-dim); }
+.period-coached.no { color: var(--faint); }
+
+/* ─── Mode switch + range controls ───────────────────────────────────── */
+.mode-switch {
+  display: inline-flex; background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: var(--r-pill);
+  padding: 3px; gap: 2px; align-self: flex-end;
+}
+.mode-switch button {
+  font: 500 12px var(--font-body); color: var(--muted);
+  background: none; border: none; border-radius: var(--r-pill);
+  padding: 6px 14px; cursor: pointer; white-space: nowrap;
+  transition: color 160ms, background 160ms;
+}
+.mode-switch button.active { background: var(--lime); color: #0A0D0B; font-weight: 600; }
+input[type="date"] {
+  background: var(--surface-2); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 10px;
+  padding: 7px 10px; font: 500 13px var(--font-body);
+  color-scheme: dark; cursor: pointer;
+}
+input[type="date"]:hover, input[type="date"]:focus-visible { border-color: var(--lime-dim); outline: none; }
+
+.range-banner {
+  display: flex; justify-content: space-between; align-items: center;
+  gap: 14px; flex-wrap: wrap;
+  border: 1px solid var(--line); border-left: 3px solid var(--lime-dim);
+  border-radius: var(--r-card); background: var(--surface); padding: 18px 22px;
+}
+.range-title { font-family: var(--font-display); font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+.range-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.range-count { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+.excluded-note {
+  margin-top: 18px; padding: 18px 22px;
+  border: 1px dashed var(--line); border-radius: var(--r-card);
+}
+.excluded-note b { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.excluded-note p { font-size: 13px; color: var(--faint); margin: 8px 0; line-height: 1.6; max-width: 62ch; }
+.excluded-note ul { margin: 8px 0; padding-left: 18px; }
+.excluded-note li { font-size: 13px; color: var(--ink-2); margin-bottom: 3px; }
+.excluded-note .excluded-cta { color: var(--muted); }
+
+/* ─── Putting ────────────────────────────────────────────────────────── */
+.putt-headline {
+  border-color: rgba(143, 179, 57, 0.4);
+  background: radial-gradient(110% 100% at 0% 0%, rgba(200,255,77,0.05), transparent 55%), var(--surface);
+}
+.putt-gap { display: flex; gap: 34px; align-items: center; flex-wrap: wrap; }
+.putt-big {
+  font-family: var(--font-display); font-size: 54px; font-weight: 700;
+  color: var(--lime); line-height: 1.05; letter-spacing: -0.03em;
+  display: flex; align-items: baseline; gap: 6px;
+}
+.putt-big .unit { font-size: 20px; color: var(--muted); font-weight: 500; }
+.putt-target { flex: 1; min-width: 220px; }
+.putt-target-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.putt-target-row b { color: var(--ink); font-family: var(--font-display); }
+.putt-bar { position: relative; height: 10px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+.putt-bar-fill { height: 100%; width: 0; border-radius: 5px; background: linear-gradient(90deg, var(--lime-dim), var(--lime)); transition: width 620ms var(--ease); }
+.putt-gap-note { font-size: 11.5px; color: var(--warn); margin-top: 7px; }
+
+.circle-rows { display: grid; gap: 8px; }
+.circle-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px;
+  background: rgba(10,13,11,0.4);
+}
+.circle-row b { font-family: var(--font-display); font-size: 14px; margin-right: 8px; }
+.circle-row.empty { border-style: dashed; opacity: 0.65; }
+.circle-pct { font-family: var(--font-display); font-size: 20px; font-weight: 700; color: var(--lime); }
+.circle-pct.muted { color: var(--faint); }
+.kpi-putt .gap { color: var(--warn); }
+
+/* ─── Contribution graph ─────────────────────────────────────────────── */
+.contrib-wrap { overflow-x: auto; padding-bottom: 4px; }
+.contrib-wrap::-webkit-scrollbar { height: 6px; }
+.contrib-wrap::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
+.contrib { display: block; }
+.contrib-cell { fill: var(--surface-2); transition: fill 140ms; }
+.contrib-cell.tracked { fill: var(--lime); cursor: pointer; }
+.contrib-cell.round-only { fill: none; stroke: var(--lime-dim); stroke-width: 1.5; cursor: pointer; }
+.legend-swatch.contrib-key { border-radius: 3px; }
+.legend-swatch.contrib-key.tracked { background: var(--lime); }
+.legend-swatch.contrib-key.round-only { background: transparent; border: 1.5px solid var(--lime-dim); }
+
+/* ─── Drill-down (details/summary) ───────────────────────────────────── */
+.drill summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.drill summary::-webkit-details-marker { display: none; }
+.drill summary::after { content: '▸'; color: var(--muted); margin-left: auto; transition: transform 180ms; }
+.drill[open] summary::after { transform: rotate(90deg); }
+.drill-hint { font-size: 11px; color: var(--faint); }
+.drill[open] .drill-hint { display: none; }
+
+.data-table .num.good { color: var(--lime); }
+.data-table .num.muted { color: var(--faint); font-weight: 400; }
+.chart-caveat.neutral { color: var(--muted); background: var(--surface-2); border-color: var(--line); }
+
 /* ─── Footer ─────────────────────────────────────────────────────────── */
 .footer {
   margin-top: 40px; border-top: 1px solid var(--line);
@@ -493,9 +612,19 @@ select:hover, select:focus-visible { border-color: var(--lime-dim); outline: non
 @media (max-width: 620px) {
   html { scroll-padding-top: 150px; }
   .topbar-inner { flex-direction: column; align-items: flex-start; gap: 10px; }
-  .controls { width: 100%; }
-  .control { flex: 1; }
-  .control select { width: 100%; }
+  .controls { width: 100%; flex-wrap: wrap; }
+  .control { flex: 1 1 140px; min-width: 0; }
+  .control select, .control input[type="date"] { width: 100%; min-width: 0; }
+  .mode-switch { flex: 1 1 100%; align-self: stretch; }
+  .mode-switch button { flex: 1; }
+  .range-ctl { flex: 1 1 calc(50% - 5px); }
+  .period-context { border-radius: var(--r-card); }
+  .putt-gap { gap: 18px; }
+  .putt-big { font-size: 42px; }
+  .rating-hero-value { font-size: 40px; }
+  .range-banner { flex-direction: column; align-items: flex-start; gap: 6px; }
+  /* wide tables scroll inside themselves rather than widening the page */
+  .data-table { display: block; overflow-x: auto; white-space: nowrap; }
   .eval-panel { padding: 22px 18px; }
   .eval-headline { font-size: 20px; }
   .bench-row { grid-template-columns: 1fr; gap: 8px; }

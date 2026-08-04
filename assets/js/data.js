@@ -40,7 +40,13 @@ export const json = v => {
 
 function coerceStatsRow(r) {
   return {
+    // period_label is an OPAQUE identifier — "2026-07" but also
+    // "checkin 2026-08-04". Never parse it as a date; use period_start /
+    // period_end for anything temporal, including sorting.
     period_label: r.period_label,
+    period_type: r.period_type || 'month',
+    period_start: r.period_start || null,
+    period_end: r.period_end || null,
     pdga_everyday_estimate: num(r.pdga_everyday_estimate),
     pdga_best_estimate: num(r.pdga_best_estimate),
     // UDisc Everyday rating: best 8 of last 20 (or top 40% under 20 rated
@@ -51,11 +57,26 @@ function coerceStatsRow(r) {
     udisc_avg_recent_10: num(r.udisc_avg_recent_10),
     udisc_best_round: num(r.udisc_best_round),
     par_or_better_pct_by_layout: json(r.par_or_better_pct_by_layout) || {},
-    // Not in the contract yet — requested 2026-08-02. Absent until the backend
-    // ships it; the UI degrades to "sample size not published" rather than
-    // implying every layout percentage rests on the same evidence.
     rounds_by_layout: json(r.rounds_by_layout) || null,
     hole_leak_table: json(r.hole_leak_table) || {},
+
+    // ── Putting (metric only — every distance is metres; the raw putts tab's
+    // distance_ft column is deliberately never read) ──────────────────────
+    putting_summary: json(r.putting_summary) || null,
+    putting_by_distance: json(r.putting_by_distance) || null,
+    putting_sessions: (json(r.putting_sessions) || [])
+      .filter(s => s.date)
+      .sort((a, b) => a.date.localeCompare(b.date)),
+
+    // ── Session/round grain — what makes custom date ranges possible ──────
+    rating_history: (json(r.rating_history) || [])
+      .filter(h => h.date)
+      .sort((a, b) => a.date.localeCompare(b.date)),
+    activity_sessions: (json(r.activity_sessions) || [])
+      .filter(s => s.date)
+      .sort((a, b) => a.date.localeCompare(b.date)),
+
+    scoring_by_par: json(r.scoring_by_par) || null,
     pressure_split: json(r.pressure_split),
     putting_pct_by_distance: json(r.putting_pct_by_distance) || {},
     practice_streak_days: num(r.practice_streak_days),
@@ -77,6 +98,15 @@ function coerceStatsRow(r) {
         everyday_rating: num(m.everyday_rating),
         everyday_pdga_est: num(m.everyday_pdga_est),
         by_layout: m.by_layout || null,
+        by_par: m.by_par || null,
+        putting: m.putting || null,
+        activity_hours: num(m.activity_hours),
+        activity_calories: num(m.activity_calories),
+        sessions: num(m.sessions),
+        active_days: num(m.active_days),
+        avg_hr: num(m.avg_hr),
+        max_hr: num(m.max_hr),
+        min_hr: num(m.min_hr),
       }))
       .sort((a, b) => a.month.localeCompare(b.month)), // never trust row order
     benchmark_deltas: json(r.benchmark_deltas) || [],
@@ -90,11 +120,12 @@ export async function loadAll() {
     fetchTab('contract_log'), fetchTab('meta'),
   ]);
 
-  // stats: coerce, drop blank keys, sort newest-first for the picker
+  // stats: drop the blank row, coerce, sort newest-first BY period_end —
+  // sorting by label would put "checkin 2026-08-04" in the wrong place.
   const periods = stats
     .filter(r => r.period_label)
     .map(coerceStatsRow)
-    .sort((a, b) => b.period_label.localeCompare(a.period_label));
+    .sort((a, b) => (b.period_end || '').localeCompare(a.period_end || ''));
 
   // analyses: append-only, possibly multiple rows per period — keep latest generated_at
   const evalByPeriod = new Map();
@@ -121,6 +152,27 @@ export async function loadAll() {
 
 // Presentational helpers ------------------------------------------------
 
+// Presentation for a period. Never derived from period_label — that string is
+// opaque. Months read as "July 2026"; check-ins carry their window.
+export function periodName(p, opts = {}) {
+  if (!p) return '—';
+  const d = iso => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-GB',
+    { day: 'numeric', month: 'short', timeZone: 'UTC', ...(opts.year === false ? {} : { year: 'numeric' }) });
+  if (p.period_type === 'month' && p.period_start) {
+    return new Date(`${p.period_start}T00:00:00Z`).toLocaleDateString('en-GB',
+      { month: opts.short ? 'short' : 'long', year: 'numeric', timeZone: 'UTC' });
+  }
+  if (p.period_type === 'checkin') {
+    return opts.withRange && p.period_start
+      ? `Check-in · ${d(p.period_start)} → ${d(p.period_end)}`
+      : `Check-in · ${d(p.period_end)}`;
+  }
+  return p.period_start ? `${d(p.period_start)} → ${d(p.period_end)}` : p.period_label;
+}
+
+export const periodRange = p =>
+  p?.period_start && p?.period_end ? `${p.period_start} → ${p.period_end}` : '';
+
 export function monthName(ym, opts = {}) {
   const [y, m] = ym.split('-').map(Number);
   const d = new Date(Date.UTC(y, m - 1, 1));
@@ -132,6 +184,82 @@ export function fmtDate(iso, opts = {}) {
   const d = new Date(iso);
   if (isNaN(d)) return iso;
   return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', ...(opts.time ? { hour: '2-digit', minute: '2-digit' } : {}) });
+}
+
+// ── Custom date range (Mode B) ────────────────────────────────────────
+// Summing per-day/per-session records the backend already computed is
+// presentational aggregation, not analysis — it derives no conclusion the
+// stored data doesn't already state. Anything monthly-bucketed
+// (par-or-better, leaks, pressure, by_par, by_layout) is deliberately
+// excluded: see MODE_B_EXCLUDES.
+
+export const MODE_B_EXCLUDES = [
+  'Par-or-better % and layout splits',
+  'Problem-hole leak table',
+  'Pressure split (competitive vs practice)',
+  'Scoring by par',
+];
+
+const inRange = (d, start, end) => d >= start && d <= end;
+
+export function aggregateRange(period, start, end) {
+  const rounds = period.rating_history.filter(r => inRange(r.date, start, end));
+  const sessions = period.activity_sessions.filter(s => inRange(s.date, start, end));
+  const putts = period.putting_sessions.filter(p => inRange(p.date, start, end));
+
+  const sum = (arr, k) => arr.reduce((t, x) => t + (Number(x[k]) || 0), 0);
+  const avg = (arr, k) => {
+    const vals = arr.map(x => Number(x[k])).filter(Number.isFinite);
+    return vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : null;
+  };
+
+  const puttAttempts = sum(putts, 'attempts');
+  const puttMade = sum(putts, 'made');
+
+  // Distance buckets re-summed from session grain where available; falls back
+  // to null so the chart says "not available for this range" rather than
+  // silently showing the all-time curve.
+  return {
+    start, end,
+    rounds,
+    sessions,
+    putting_sessions: putts,
+    rounds_count: rounds.length,
+    best_rating: rounds.length ? Math.max(...rounds.map(r => r.rating)) : null,
+    avg_rating: rounds.length ? Math.round(rounds.reduce((t, r) => t + r.rating, 0) / rounds.length) : null,
+    latest_rating: rounds.length ? rounds.at(-1).rating : null,
+    activity_hours: +(sum(sessions, 'minutes') / 60).toFixed(1),
+    activity_calories: sum(sessions, 'calories'),
+    session_count: sessions.length,
+    active_days: new Set(sessions.map(s => s.date)).size,
+    avg_hr: avg(sessions, 'hr_avg'),
+    max_hr: sessions.length ? Math.max(...sessions.map(s => Number(s.hr_max) || 0)) || null : null,
+    min_hr: sessions.length ? Math.min(...sessions.map(s => Number(s.hr_min) || Infinity)) : null,
+    putt_attempts: puttAttempts,
+    putt_made: puttMade,
+    putt_pct: puttAttempts ? +(puttMade / puttAttempts * 100).toFixed(1) : null,
+    putt_session_count: putts.length,
+  };
+}
+
+// Union of every day Bram played or practised, from BOTH series.
+// activity_sessions only covers 2026-07-10 onward; rating_history goes back to
+// February. Using either alone misrepresents the history, so they are merged
+// and kept visually distinct.
+export function activityCalendar(period) {
+  const days = new Map();
+  for (const r of period.rating_history) {
+    const d = days.get(r.date) || { date: r.date, rounds: 0, minutes: 0, tracked: false };
+    d.rounds += 1;
+    days.set(r.date, d);
+  }
+  for (const s of period.activity_sessions) {
+    const d = days.get(s.date) || { date: s.date, rounds: 0, minutes: 0, tracked: false };
+    d.minutes += Number(s.minutes) || 0;
+    d.tracked = true;
+    days.set(s.date, d);
+  }
+  return days;
 }
 
 export function nextUploadDue(metaRows) {

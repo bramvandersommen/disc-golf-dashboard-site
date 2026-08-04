@@ -310,6 +310,83 @@ export function gauge(container, { value, max, display, unit, size = 108 }) {
   return wrap;
 }
 
+// ── contribution graph ────────────────────────────────────────────────
+// GitHub-style day grid. Two visually distinct states, because the sources
+// have different coverage: tracked workout days carry intensity from
+// `minutes`; round-only days (before Apple Watch tracking began) get a flat
+// marker. Rendering only the tracked series would show five months as empty.
+export function contributionGraph(container, days, { start, end } = {}) {
+  container.innerHTML = '';
+  const dates = [...days.keys()].sort();
+  if (!dates.length) {
+    container.innerHTML = '<p class="note">No sessions recorded in this range.</p>';
+    return;
+  }
+  const first = new Date(`${start || dates[0]}T00:00:00Z`);
+  const last = new Date(`${end || dates.at(-1)}T00:00:00Z`);
+
+  // start on the Monday of the first week
+  const gridStart = new Date(first);
+  const dow = (gridStart.getUTCDay() + 6) % 7; // Mon=0
+  gridStart.setUTCDate(gridStart.getUTCDate() - dow);
+
+  const weeks = Math.ceil(((last - gridStart) / 86400000 + 1) / 7);
+  const CELL = 13, GAP = 3, LEFT = 26, TOP = 18;
+  const W = LEFT + weeks * (CELL + GAP);
+  const H = TOP + 7 * (CELL + GAP) + 4;
+
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', class: 'contrib' }, container);
+
+  const maxMin = Math.max(...[...days.values()].map(d => d.minutes), 1);
+  const iso = d => d.toISOString().slice(0, 10);
+
+  ['M', 'W', 'F'].forEach((lbl, i) => {
+    el('text', { x: 0, y: TOP + (i * 2) * (CELL + GAP) + CELL - 2, class: 'axis-label' }, svg).textContent = lbl;
+  });
+
+  let lastMonth = '';
+  for (let w = 0; w < weeks; w++) {
+    for (let d = 0; d < 7; d++) {
+      const cur = new Date(gridStart);
+      cur.setUTCDate(cur.getUTCDate() + w * 7 + d);
+      if (cur > last) continue;
+      const key = iso(cur);
+      const x = LEFT + w * (CELL + GAP);
+      const y = TOP + d * (CELL + GAP);
+
+      if (d === 0) {
+        const mo = cur.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' });
+        if (mo !== lastMonth) {
+          el('text', { x, y: 10, class: 'axis-label' }, svg).textContent = mo;
+          lastMonth = mo;
+        }
+      }
+
+      const rec = days.get(key);
+      const cell = el('rect', {
+        x, y, width: CELL, height: CELL, rx: 3,
+        class: 'contrib-cell' + (rec ? (rec.tracked ? ' tracked' : ' round-only') : ''),
+      }, svg);
+
+      if (rec) {
+        if (rec.tracked) {
+          // intensity from minutes; floor keeps a short session visible
+          cell.style.opacity = String(0.35 + 0.65 * Math.min(1, rec.minutes / maxMin));
+        }
+        const parts = [];
+        if (rec.rounds) parts.push(['Rounds', rec.rounds]);
+        if (rec.minutes) parts.push(['Tracked', `${Math.round(rec.minutes)} min`]);
+        if (!rec.tracked) parts.push(['Source', 'round record only']);
+        cell.addEventListener('pointermove', e => showTip(ttHtml(
+          new Date(`${key}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }),
+          parts), e.clientX, e.clientY));
+        cell.addEventListener('pointerleave', hideTip);
+      }
+    }
+  }
+  return svg;
+}
+
 // ── count-up ──────────────────────────────────────────────────────────
 export function countUp(node, target, { decimals = 0, duration = 560, suffix = '' } = {}) {
   if (target === null || target === undefined) { node.textContent = '—'; return; }

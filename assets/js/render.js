@@ -2,8 +2,8 @@
 // no coaching conclusions are derived here (hard rule, see CLAUDE.md).
 // All distances are metric; the putts tab's distance_ft is never read.
 
-import { monthName, periodName, periodRange, fmtDate, nextUploadDue, aggregateRange, activityCalendar, streakStats, MODE_B_EXCLUDES } from './data.js?v=202608041419';
-import { lineChart, barChart, groupedBars, contributionGraph, countUp, showTip, hideTip, ttHtml, COLORS } from './charts.js?v=202608041419';
+import { monthName, periodName, periodRange, fmtDate, nextUploadDue, aggregateRange, activityCalendar, streakStats, MODE_B_EXCLUDES } from './data.js?v=202608050949';
+import { lineChart, barChart, groupedBars, contributionGraph, countUp, showTip, hideTip, ttHtml, COLORS } from './charts.js?v=202608050949';
 
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

@@ -2,8 +2,8 @@
 // Two modes. A: evaluation period (coached, default). B: custom date range
 // (uncoached — monthly-bucketed sections are dropped, not faked).
 
-import { loadAll, periodName } from './data.js?v=202608041419';
-import * as R from './render.js?v=202608041419';
+import { loadAll, periodName } from './data.js?v=202608050949';
+import * as R from './render.js?v=202608050949';
 
 const $ = sel => document.querySelector(sel);
 

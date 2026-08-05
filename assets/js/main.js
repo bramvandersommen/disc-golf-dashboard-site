@@ -31,6 +31,7 @@ function selectPeriod(label) {
 
 function renderAll() {
   if (state.mode === 'range') { R.renderRange(state); R.renderFooter(state); observeReveals(); return; }
+  R.renderProfile(state);
   R.renderPeriodContext(state);
   R.renderKpis(state);
   R.renderCoachStrip(state);

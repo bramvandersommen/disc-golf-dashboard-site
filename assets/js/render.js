@@ -2,7 +2,7 @@
 // no coaching conclusions are derived here (hard rule, see CLAUDE.md).
 // All distances are metric; the putts tab's distance_ft is never read.
 
-import { monthName, periodName, periodRange, fmtDate, nextUploadDue, aggregateRange, activityCalendar, MODE_B_EXCLUDES } from './data.js?v=202608041419';
+import { monthName, periodName, periodRange, fmtDate, nextUploadDue, aggregateRange, activityCalendar, streakStats, MODE_B_EXCLUDES } from './data.js?v=202608041419';
 import { lineChart, barChart, groupedBars, contributionGraph, countUp, showTip, hideTip, ttHtml, COLORS } from './charts.js?v=202608041419';
 
 const $ = sel => document.querySelector(sel);
@@ -123,6 +123,63 @@ export function renderKpis(state) {
   } else {
     countUp(c[1], selected.practice_streak_days);
   }
+}
+
+// ── Profile + streak hero ─────────────────────────────────────────────
+const PROFILE = {
+  name: 'Bram van der Sommen',
+  udisc: 'https://app.udisc.com/applink/community/profile?profileId=b67xb9URBB',
+  pdga: 'https://www.pdga.com/player/331394',
+  pdgaNo: '331394',
+};
+
+export function renderProfile(state) {
+  const s = state.selected;
+  const cal = activityCalendar(s);
+  const st = streakStats(cal);
+  const host = $('#profile-section');
+
+  host.innerHTML = `
+    <div class="profile reveal">
+      <div class="profile-id">
+        <img class="profile-avatar" src="assets/img/avatar.jpg" alt="" width="72" height="72" loading="lazy">
+        <div class="profile-meta">
+          <h2 class="profile-name">${esc(PROFILE.name)}</h2>
+          <div class="profile-links">
+            <a class="profile-link" href="${PROFILE.udisc}" target="_blank" rel="noopener noreferrer">
+              <span class="profile-link-mark">UDisc</span>Profile
+              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2L2.5 9.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </a>
+            <a class="profile-link" href="${PROFILE.pdga}" target="_blank" rel="noopener noreferrer">
+              <span class="profile-link-mark">PDGA</span>#${esc(PROFILE.pdgaNo)}
+              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4 2h6v6M10 2L2.5 9.5" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <div class="streak-block">
+        <div class="streak-stats">
+          <div class="streak-stat"><b data-s></b><span>days out</span></div>
+          <div class="streak-stat"><b data-s></b><span>longest run</span></div>
+          <div class="streak-stat"><b data-s></b><span>last 30 days</span></div>
+        </div>
+        <div class="contrib-wrap streak-graph" data-chart="streak"></div>
+        <div class="streak-foot">
+          <span class="streak-hint">Every day played or practised${st.first ? ` · since ${fmtDate(st.first)}` : ''}</span>
+          <span class="streak-key">
+            <i class="contrib-key round-only"></i>round
+            <i class="contrib-key tracked"></i>tracked
+          </span>
+        </div>
+      </div>
+    </div>`;
+
+  const b = host.querySelectorAll('[data-s]');
+  countUp(b[0], st.total);
+  countUp(b[1], st.longest);
+  countUp(b[2], st.last30);
+  contributionGraph(host.querySelector('[data-chart="streak"]'), cal, { compact: true });
 }
 
 // ── Period context banner ─────────────────────────────────────────────
@@ -407,9 +464,6 @@ export function renderScoring(state) {
   const host = $('#scoring-section');
   const s = state.selected;
   const byPar = s.scoring_by_par;
-  const leakLayouts = Object.keys(s.hole_leak_table);
-  const leakLayout = leakLayouts.includes(state.layout) ? state.layout
-    : (leakLayouts.includes('Pro') ? 'Pro' : leakLayouts[0]);
 
   const parRows = byPar ? Object.entries(byPar).map(([k, v]) => ({ key: k, label: k.replace('par', 'Par '), ...v })) : [];
 
@@ -449,7 +503,7 @@ export function renderScoring(state) {
       </div>
     </div>
 
-    <div class="grid2" style="margin-top:14px">
+    <div style="margin-top:14px">
       <div class="card reveal">
         <h3>Pressure split</h3>
         <p class="note">Saturday rounds = competitive (heuristic), rest = practice</p>
@@ -460,15 +514,7 @@ export function renderScoring(state) {
         </div>
       </div>
 
-      <details class="card reveal drill">
-        <summary><h3 style="display:inline">Problem holes · ${esc(leakLayout)}</h3>${sampleTag(layoutCount(state, leakLayout))}
-          <span class="drill-hint">course-specific detail — expand</span></summary>
-        <p class="note" style="margin-top:10px">Five costliest holes on this layout, worst first. Switch layout in the header.</p>
-        <table class="data-table">
-          <thead><tr><th>Hole</th><th style="width:44%">Avg over par</th><th class="num">Double+ %</th></tr></thead>
-          <tbody data-list="leaks"></tbody>
-        </table>
-      </details>
+
     </div>`;
 
   // by-par chart — avg_over leads, per the fair-comparison rule
@@ -524,17 +570,6 @@ export function renderScoring(state) {
   else if (entries.some(([n]) => (layoutCount(state, n) ?? 99) < MIN_SOLID))
     caveat.innerHTML = `⚠ Muted rows have fewer than ${MIN_SOLID} rounds — directional only`;
   else caveat.remove();
-
-  // leaks
-  const leaks = s.hole_leak_table[leakLayout] || [];
-  const maxOver = Math.max(...leaks.map(l => l.avgOver), 0.01);
-  host.querySelector('[data-list="leaks"]').innerHTML = leaks.length ? leaks.map(l => `
-    <tr>
-      <td style="font-family:var(--font-display); font-weight:600">${esc(l.hole)}</td>
-      <td><span class="leak-bar" style="width:${Math.round((l.avgOver / maxOver) * 100)}px"></span>
-          <span style="margin-left:8px; font-variant-numeric:tabular-nums">+${Number(l.avgOver).toFixed(2)}</span></td>
-      <td class="num ${l.doublePct >= 15 ? 'hot' : ''}">${Number(l.doublePct).toFixed(1)}%</td>
-    </tr>`).join('') : `<tr><td colspan="3" style="color:var(--faint)">No leak data for this layout</td></tr>`;
 
   // pressure
   const ps = s.pressure_split;

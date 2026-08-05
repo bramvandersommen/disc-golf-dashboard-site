@@ -315,7 +315,7 @@ export function gauge(container, { value, max, display, unit, size = 108 }) {
 // have different coverage: tracked workout days carry intensity from
 // `minutes`; round-only days (before Apple Watch tracking began) get a flat
 // marker. Rendering only the tracked series would show five months as empty.
-export function contributionGraph(container, days, { start, end } = {}) {
+export function contributionGraph(container, days, { start, end, compact = false } = {}) {
   container.innerHTML = '';
   const dates = [...days.keys()].sort();
   if (!dates.length) {
@@ -323,7 +323,11 @@ export function contributionGraph(container, days, { start, end } = {}) {
     return;
   }
   const first = new Date(`${start || dates[0]}T00:00:00Z`);
-  const last = new Date(`${end || dates.at(-1)}T00:00:00Z`);
+  // Always run the grid to today so the current gap is visible rather than
+  // the chart ending on the last active day and implying an unbroken streak.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const endIso = end || (dates.at(-1) > todayIso ? dates.at(-1) : todayIso);
+  const last = new Date(`${endIso}T00:00:00Z`);
 
   // start on the Monday of the first week
   const gridStart = new Date(first);
@@ -331,8 +335,9 @@ export function contributionGraph(container, days, { start, end } = {}) {
   gridStart.setUTCDate(gridStart.getUTCDate() - dow);
 
   const weeks = Math.ceil(((last - gridStart) / 86400000 + 1) / 7);
-  const CELL = 13, GAP = 3, LEFT = 26, TOP = 18;
-  const W = LEFT + weeks * (CELL + GAP);
+  const CELL = compact ? 11 : 13, GAP = 3, LEFT = compact ? 20 : 26, TOP = 18;
+  // +18 right padding so the final month label isn't clipped
+  const W = LEFT + weeks * (CELL + GAP) + 18;
   const H = TOP + 7 * (CELL + GAP) + 4;
 
   const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: W, height: H, role: 'img', class: 'contrib' }, container);
@@ -344,7 +349,7 @@ export function contributionGraph(container, days, { start, end } = {}) {
     el('text', { x: 0, y: TOP + (i * 2) * (CELL + GAP) + CELL - 2, class: 'axis-label' }, svg).textContent = lbl;
   });
 
-  let lastMonth = '';
+  let lastMonth = '', lastCellX = 0;
   for (let w = 0; w < weeks; w++) {
     for (let d = 0; d < 7; d++) {
       const cur = new Date(gridStart);
@@ -363,27 +368,44 @@ export function contributionGraph(container, days, { start, end } = {}) {
       }
 
       const rec = days.get(key);
+      const isToday = key === todayIso;
+      lastCellX = x;
       const cell = el('rect', {
         x, y, width: CELL, height: CELL, rx: 3,
-        class: 'contrib-cell' + (rec ? (rec.tracked ? ' tracked' : ' round-only') : ''),
+        class: 'contrib-cell' + (rec ? (rec.tracked ? ' tracked' : ' round-only') : '') + (isToday ? ' today' : ''),
       }, svg);
 
       if (rec) {
-        if (rec.tracked) {
-          // intensity from minutes; floor keeps a short session visible
-          cell.style.opacity = String(0.35 + 0.65 * Math.min(1, rec.minutes / maxMin));
+        const intensity = rec.tracked ? 0.4 + 0.6 * Math.min(1, rec.minutes / maxMin) : 1;
+        cell.style.setProperty('--i', intensity);
+        // staggered fade-in across the grid — reads as the year filling in
+        if (!reducedMotion()) {
+          cell.style.opacity = '0';
+          cell.style.transition = `opacity 320ms ease ${Math.min(600, w * 8)}ms`;
+          requestAnimationFrame(() => requestAnimationFrame(() => { cell.style.opacity = ''; }));
         }
         const parts = [];
         if (rec.rounds) parts.push(['Rounds', rec.rounds]);
         if (rec.minutes) parts.push(['Tracked', `${Math.round(rec.minutes)} min`]);
-        if (!rec.tracked) parts.push(['Source', 'round record only']);
-        cell.addEventListener('pointermove', e => showTip(ttHtml(
-          new Date(`${key}T00:00:00Z`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }),
-          parts), e.clientX, e.clientY));
+        if (!rec.tracked) parts.push(['Watch', 'not tracked']);
+        const label = new Date(`${key}T00:00:00Z`).toLocaleDateString('en-GB',
+          { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+        const show = e => showTip(ttHtml(label, parts), e.clientX, e.clientY);
+        cell.addEventListener('pointermove', show);
+        cell.addEventListener('pointerdown', show);   // touch: tap to reveal
         cell.addEventListener('pointerleave', hideTip);
+        cell.addEventListener('pointercancel', hideTip);
       }
     }
   }
+
+  // On narrow screens the grid overflows; open it at the recent end, which is
+  // the part worth seeing first.
+  requestAnimationFrame(() => {
+    if (container.scrollWidth > container.clientWidth) {
+      container.scrollLeft = container.scrollWidth;
+    }
+  });
   return svg;
 }
 

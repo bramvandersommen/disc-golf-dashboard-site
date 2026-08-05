@@ -231,7 +231,12 @@ export function aggregateRange(period, start, end) {
     activity_hours: +(sum(sessions, 'minutes') / 60).toFixed(1),
     activity_calories: sum(sessions, 'calories'),
     session_count: sessions.length,
-    active_days: new Set(sessions.map(s => s.date)).size,
+    // A day counts as active if ANYTHING happened on it — a tracked workout
+    // OR a round played. Counting only tracked sessions silently drops every
+    // round played without the watch (3 such days in July alone).
+    active_days: new Set([...sessions.map(s => s.date), ...rounds.map(r => r.date)]).size,
+    tracked_days: new Set(sessions.map(s => s.date)).size,
+    round_days: new Set(rounds.map(r => r.date)).size,
     avg_hr: avg(sessions, 'hr_avg'),
     max_hr: sessions.length ? Math.max(...sessions.map(s => Number(s.hr_max) || 0)) || null : null,
     min_hr: sessions.length ? Math.min(...sessions.map(s => Number(s.hr_min) || Infinity)) : null,
@@ -260,6 +265,44 @@ export function activityCalendar(period) {
     days.set(s.date, d);
   }
   return days;
+}
+
+// Streak facts over the activity calendar. Counting distinct days and the
+// gaps between them is arithmetic over dates the backend already published —
+// it states what the calendar shows, it does not judge the training.
+export function streakStats(days) {
+  const dates = [...days.keys()].sort();
+  if (!dates.length) return { total: 0, current: 0, longest: 0, thisWeek: 0, last30: 0, first: null, last: null };
+
+  const DAY = 86400000;
+  const t = iso => new Date(`${iso}T00:00:00Z`).getTime();
+
+  let longest = 1, run = 1;
+  for (let i = 1; i < dates.length; i++) {
+    run = (t(dates[i]) - t(dates[i - 1]) === DAY) ? run + 1 : 1;
+    if (run > longest) longest = run;
+  }
+
+  // Current streak runs backwards from the most recent active day, and only
+  // counts if that day is today or yesterday — otherwise the streak is broken.
+  const today = new Date(); today.setUTCHours(0, 0, 0, 0);
+  const lastDay = t(dates.at(-1));
+  let current = 0;
+  if ((today.getTime() - lastDay) <= DAY) {
+    current = 1;
+    for (let i = dates.length - 1; i > 0; i--) {
+      if (t(dates[i]) - t(dates[i - 1]) === DAY) current++; else break;
+    }
+  }
+
+  const since = n => dates.filter(d => (today.getTime() - t(d)) < n * DAY).length;
+  return {
+    total: dates.length,
+    current, longest,
+    thisWeek: since(7),
+    last30: since(30),
+    first: dates[0], last: dates.at(-1),
+  };
 }
 
 export function nextUploadDue(metaRows) {

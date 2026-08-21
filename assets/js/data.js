@@ -9,6 +9,8 @@ const TABS = {
   benchmarks:   '1081989232',
   contract_log: '1674078242',
   meta:         '1909773820',
+  round_stats:  '651105154',   // optional, sparse — render only on an exact match
+  coaching_log: '550935323',   // optional, no join key — nothing depends on it
 };
 
 // Cache-buster: `cache: 'no-store'` only governs the browser cache, not Google's
@@ -27,9 +29,19 @@ async function fetchTab(name) {
   return parseCsv(await res.text());
 }
 
+// A Sheets formula-parsing quirk leaves literal "#ERROR!" in some cells.
+// Those are absent values, not content — never render them.
+export const cell = v => {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  if (!s || s.startsWith('#ERROR!')) return null;
+  return s;
+};
+
 export const num = v => {
-  if (v === null || v === undefined || v === '') return null;
-  const n = Number(String(v).replace(/,/g, ''));
+  const s = cell(v);
+  if (s === null) return null;
+  const n = Number(s.replace(/,/g, ''));
   return Number.isFinite(n) ? n : null;
 };
 
@@ -114,10 +126,18 @@ function coerceStatsRow(r) {
   };
 }
 
+// Both new tabs are optional: a failure to reach them must not break the
+// dashboard, which is correct with nothing rendered from either.
+async function fetchOptional(name) {
+  try { return await fetchTab(name); }
+  catch (e) { console.warn(`optional tab ${name} unavailable`, e); return []; }
+}
+
 export async function loadAll() {
-  const [stats, analyses, benchmarks, contractLog, meta] = await Promise.all([
+  const [stats, analyses, benchmarks, contractLog, meta, roundStats, coachingLog] = await Promise.all([
     fetchTab('stats'), fetchTab('analyses'), fetchTab('benchmarks'),
     fetchTab('contract_log'), fetchTab('meta'),
+    fetchOptional('round_stats'), fetchOptional('coaching_log'),
   ]);
 
   // stats: drop the blank row, coerce, sort newest-first BY period_end —
@@ -147,7 +167,40 @@ export async function loadAll() {
 
   const metaRows = meta.filter(r => r.filename && r.processed_at);
 
-  return { periods, evalByPeriod, bench, contractLog, metaRows };
+  // round_stats: every numeric is nullable. An empty scramble_pct means no
+  // scramble situation arose — null, never 0.
+  const roundStatRows = roundStats
+    .filter(r => cell(r.date) && cell(r.course) && cell(r.layout))
+    .map(r => ({
+      date: cell(r.date),
+      course: cell(r.course),
+      layout: cell(r.layout),
+      c1x_pct: num(r.c1x_pct),
+      c2_pct: num(r.c2_pct),
+      gir_c1_pct: num(r.gir_c1_pct),
+      gir_c2_pct: num(r.gir_c2_pct),
+      fairway_pct: num(r.fairway_pct),
+      scramble_pct: num(r.scramble_pct),
+      parked_pct: num(r.parked_pct),
+      penalties: num(r.penalties),
+      birdie_pct: num(r.birdie_pct),
+      notes: cell(r.notes),
+    }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+
+  const coachingNotes = coachingLog
+    .filter(r => cell(r.logged_at) && cell(r.note))
+    .map(r => ({
+      logged_at: cell(r.logged_at),
+      type: cell(r.type) || 'note',
+      course: cell(r.course),
+      layout: cell(r.layout),
+      topic: cell(r.topic),
+      note: cell(r.note),
+    }))
+    .sort((a, b) => b.logged_at.localeCompare(a.logged_at));
+
+  return { periods, evalByPeriod, bench, contractLog, metaRows, roundStatRows, coachingNotes };
 }
 
 // Presentational helpers ------------------------------------------------
@@ -303,6 +356,36 @@ export function streakStats(days) {
     last30: since(30),
     first: dates[0], last: dates.at(-1),
   };
+}
+
+// ── round_stats join ──────────────────────────────────────────────────
+// Joins on course + layout + date — all three. Bram plays two rounds on the
+// same course and layout on the same day (2026-08-15 is a live example), so
+// a two-key join would silently attach stats to the wrong round. When one
+// stats row could match more than one round we render NOTHING for it: an
+// unattributable number is worse than an absent one.
+const joinKey = (date, course, layout) =>
+  [date, course, layout].map(v => String(v ?? '').trim().toLowerCase()).join('||');
+
+export function matchRoundStats(period, roundStatRows) {
+  if (!roundStatRows?.length || !period?.rating_history?.length) {
+    return { matched: [], ambiguous: [], unmatched: [] };
+  }
+  const byKey = new Map();
+  for (const r of period.rating_history) {
+    const k = joinKey(r.date, r.course, r.layout);
+    if (!byKey.has(k)) byKey.set(k, []);
+    byKey.get(k).push(r);
+  }
+
+  const matched = [], ambiguous = [], unmatched = [];
+  for (const rs of roundStatRows) {
+    const candidates = byKey.get(joinKey(rs.date, rs.course, rs.layout)) || [];
+    if (candidates.length === 1) matched.push({ ...rs, round: candidates[0] });
+    else if (candidates.length > 1) ambiguous.push(rs);
+    else unmatched.push(rs);
+  }
+  return { matched, ambiguous, unmatched };
 }
 
 export function nextUploadDue(metaRows) {

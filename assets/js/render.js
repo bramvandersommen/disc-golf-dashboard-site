@@ -2,7 +2,7 @@
 // no coaching conclusions are derived here (hard rule, see CLAUDE.md).
 // All distances are metric; the putts tab's distance_ft is never read.
 
-import { monthName, periodName, periodRange, fmtDate, nextUploadDue, aggregateRange, activityCalendar, streakStats, MODE_B_EXCLUDES } from './data.js?v=202608050949';
+import { monthName, periodName, periodRange, fmtDate, nextUploadDue, aggregateRange, activityCalendar, streakStats, matchRoundStats, MODE_B_EXCLUDES } from './data.js?v=202608050949';
 import { lineChart, barChart, groupedBars, contributionGraph, countUp, showTip, hideTip, ttHtml, COLORS } from './charts.js?v=202608050949';
 
 const $ = sel => document.querySelector(sel);
@@ -653,6 +653,101 @@ export function renderActivity(state) {
         ? `Only one month of tracked heart-rate data so far (${monthName(hrMonths[0].month)}: ${hrMonths[0].avg_hr} bpm average, ${hrMonths[0].max_hr} max). A trend needs two.`
         : 'No tracked heart-rate data yet.'}</p>`;
   }
+}
+
+// ── Advanced round stats (UDisc Pro, optional + sparse) ───────────────
+// Renders only on an unambiguous course+layout+date match. Absent values
+// print as "—", never 0 — a blank scramble_pct means no scramble arose.
+export function renderRoundStats(state) {
+  const section = document.getElementById('roundstats');
+  const host = $('#roundstats-section');
+  const { matched, ambiguous } = matchRoundStats(state.selected, state.roundStatRows);
+
+  // Only rounds inside the selected window
+  const inWindow = matched.filter(m =>
+    m.date >= state.selected.period_start && m.date <= state.selected.period_end);
+
+  if (!inWindow.length) { section.hidden = true; return; }
+  section.hidden = false;
+
+  const pct = v => v === null ? '<span class="stat-absent">—</span>' : `${v}<span class="stat-unit">%</span>`;
+  const TRIPLET = [
+    { k: 'c1x_pct', label: 'C1X putting', hint: 'inside 10m, excluding tap-ins' },
+    { k: 'gir_c1_pct', label: 'GIR C1', hint: 'in the circle in regulation' },
+    { k: 'fairway_pct', label: 'Driving accuracy', hint: 'fairway hit' },
+  ];
+  const SECONDARY = [
+    { k: 'c2_pct', label: 'C2 putting' },
+    { k: 'gir_c2_pct', label: 'GIR C2' },
+    { k: 'parked_pct', label: 'Parked' },
+    { k: 'scramble_pct', label: 'Scramble' },
+    { k: 'birdie_pct', label: 'Birdie' },
+  ];
+
+  host.innerHTML = inWindow.map(m => `
+    <div class="card reveal rs-card">
+      <div class="rs-head">
+        <div>
+          <h3>${esc(m.course)} · ${esc(m.layout)}</h3>
+          <p class="note">${fmtDate(m.date)}${m.round?.rating != null ? ` · round rated <b>${m.round.rating}</b>` : ''}</p>
+        </div>
+        <span class="rs-source">UDisc Pro</span>
+      </div>
+
+      <div class="rs-triplet">
+        ${TRIPLET.map(t => `
+          <div class="rs-stat">
+            <div class="rs-stat-value">${pct(m[t.k])}</div>
+            <div class="rs-stat-label">${t.label}</div>
+            <div class="rs-stat-hint">${t.hint}</div>
+          </div>`).join('')}
+      </div>
+
+      <div class="rs-secondary">
+        ${SECONDARY.map(s => `
+          <span class="rs-chip${m[s.k] === null ? ' absent' : ''}">
+            ${s.label}<b>${m[s.k] === null ? 'not recorded' : `${m[s.k]}%`}</b>
+          </span>`).join('')}
+        ${m.penalties !== null ? `<span class="rs-chip">Penalties<b>${m.penalties}</b></span>` : ''}
+      </div>
+
+      ${m.notes ? `<p class="rs-notes">${esc(m.notes)}</p>` : ''}
+    </div>`).join('')
+    + (ambiguous.length ? `
+      <div class="empty-card reveal" style="margin-top:14px">
+        <h4>${ambiguous.length} round${ambiguous.length === 1 ? '' : 's'} not shown</h4>
+        <p>Two rounds share that course, layout and date, so these stats can't be attributed to one of them without guessing.</p>
+      </div>` : '');
+}
+
+// ── Coaching log (optional drill-down, verbatim) ──────────────────────
+export function renderCoachingLog(state) {
+  const section = document.getElementById('coachlog');
+  const host = $('#coachlog-section');
+  const notes = state.coachingNotes || [];
+  if (!notes.length) { section.hidden = true; return; }
+  section.hidden = false;
+
+  host.innerHTML = `
+    <details class="card reveal drill">
+      <summary><h3 style="display:inline">Coaching notes</h3>
+        <span class="n-tag">${notes.length}</span>
+        <span class="drill-hint">qualitative context — expand</span>
+      </summary>
+      <p class="note" style="margin-top:10px">Written by the coaching layer. Context the numbers don't carry; no chart depends on it.</p>
+      <div class="log-list">
+        ${notes.map(n => `
+          <div class="log-item">
+            <div class="log-meta">
+              <span class="log-type ${esc(n.type)}">${esc(n.type.replace(/_/g, ' '))}</span>
+              <span class="log-date">${fmtDate(n.logged_at)}</span>
+              ${n.course && !/^\(/.test(n.course) ? `<span class="log-where">${esc(n.course)}${n.layout && !/^\(/.test(n.layout) ? ` · ${esc(n.layout)}` : ''}</span>` : ''}
+            </div>
+            ${n.topic ? `<div class="log-topic">${esc(n.topic)}</div>` : ''}
+            <p class="log-note">${esc(n.note)}</p>
+          </div>`).join('')}
+      </div>
+    </details>`;
 }
 
 // ── Benchmarks ────────────────────────────────────────────────────────

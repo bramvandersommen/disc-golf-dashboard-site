@@ -15,7 +15,7 @@ const state = {
   rangeStart: null, rangeEnd: null,
 };
 
-const PERIOD_SECTIONS = ['#overview', '#coaching', '#rating', '#putting', '#scoring', '#activity', '#benchmarks'];
+const PERIOD_SECTIONS = ['#overview', '#coaching', '#rating', '#putting', '#roundstats', '#scoring', '#activity', '#benchmarks', '#coachlog'];
 const RANGE_SECTIONS = ['#range'];
 
 function selectPeriod(label) {
@@ -38,8 +38,10 @@ function renderAll() {
   R.renderEval(state);
   R.renderRating(state);
   R.renderPutting(state);
+  R.renderRoundStats(state);
   R.renderScoring(state);
   R.renderActivity(state);
+  R.renderCoachingLog(state);
   R.renderBenchmarks(state);
   R.renderFooter(state);
   observeReveals();
@@ -54,7 +56,12 @@ function renderLayoutDependent() {
 
 function applyMode() {
   const range = state.mode === 'range';
-  for (const sel of PERIOD_SECTIONS) { const n = document.querySelector(sel); if (n) n.hidden = range; }
+  // #roundstats and #coachlog own their visibility (they hide when empty),
+  // so mode only ever hides them — renderAll decides if they come back.
+  for (const sel of PERIOD_SECTIONS) { const n = document.querySelector(sel); if (n && range) n.hidden = true; }
+  if (!range) for (const sel of ['#overview', '#coaching', '#rating', '#putting', '#scoring', '#activity', '#benchmarks']) {
+    const n = document.querySelector(sel); if (n) n.hidden = false;
+  }
   for (const sel of RANGE_SECTIONS) { const n = document.querySelector(sel); if (n) n.hidden = !range; }
   $('#mode-period').classList.toggle('active', !range);
   $('#mode-range').classList.toggle('active', range);

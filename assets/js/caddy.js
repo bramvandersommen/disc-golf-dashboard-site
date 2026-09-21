@@ -1,8 +1,8 @@
 // Caddy — shot-shape advisor. A rules engine over the live bag: shot shapes declare
 // what they need (stability per wind, speed range, tags); the Discs tab supplies the
 // disc data (effective_stability + tags + role + notes). NO disc is hardcoded.
-import { loadDiscs } from './data.js?v=202609212201';
-import { renderFlightSvg, distanceM, flightOf } from './flight.js?v=202609212201';
+import { loadDiscs } from './data.js?v=202609212215';
+import { renderFlightSvg, distanceM, flightOf } from './flight.js?v=202609212215';
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

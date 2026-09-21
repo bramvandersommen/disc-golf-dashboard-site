@@ -4,6 +4,7 @@
 
 import { monthName, periodName, periodRange, fmtDate, nextUploadDue, aggregateRange, activityCalendar, streakStats, matchRoundStats, MODE_B_EXCLUDES } from './data.js?v=202608211558';
 import { lineChart, barChart, groupedBars, contributionGraph, countUp, showTip, hideTip, ttHtml, COLORS } from './charts.js?v=202608211558';
+import { renderFlightSvg, distanceM, flightOf } from './flight.js?v=202608211558';
 
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -879,6 +880,181 @@ export function renderRange(state) {
   }
 
   contributionGraph(host.querySelector('[data-chart="range-contrib"]'), cal, { start: a.start, end: a.end });
+}
+
+// ── Bag (Part 2) ──────────────────────────────────────────────────────
+// Equipment view: grid of discs → click for a detail modal with that disc's
+// flight path; a compare overlay for several at once. Reads state.discs (the
+// Discs tab) — no hardcoded disc data. Period-independent, so built once.
+const BAG_TYPES = ['ALL', 'DRIVER', 'FAIRWAY', 'MIDRANGE', 'PUTTER'];
+const BAG_TLABEL = { ALL: 'All', DRIVER: 'Drivers', FAIRWAY: 'Fairway', MIDRANGE: 'Midrange', PUTTER: 'Putters' };
+const BAG_SLIDERS = [['speed', 'Speed'], ['glide', 'Glide'], ['turn', 'Turn'], ['fade', 'Fade']];
+const BAG_COLORS = ['#C8FF4D', '#6883D6', '#7A9F2C', '#E0B341', '#D97757', '#5FB3B3', '#C98BDB', '#E8778F'];
+const bagStability = d => { const s = (d.turn ?? 0) + (d.fade ?? 0); return s < -1 ? 'understable' : s <= 1 ? 'neutral' : s <= 3 ? 'stable' : 'overstable'; };
+const IMG = id => `discs/${id}.webp`;   // relative — served from the same Pages origin
+const reduced = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+let bagBuilt = false;
+
+export function renderBag(state) {
+  const discs = state.discs || [];
+  const host = $('#bag-section');
+  if (!host) return;
+  if (!discs.length) { host.innerHTML = `<div class="empty-card reveal"><h4>No bag data yet</h4><p class="note">The Discs tab returned no rows.</p></div>`; return; }
+  if (bagBuilt) return;                  // equipment doesn't change per period
+  bagBuilt = true;
+
+  const byId = id => discs.find(d => d.id === id);
+  const bounds = {}, range = {};
+  for (const [k] of BAG_SLIDERS) { const vs = discs.map(d => d[k]).filter(Number.isFinite); bounds[k] = [Math.min(...vs), Math.max(...vs)]; range[k] = [...bounds[k]]; }
+  let type = 'ALL', sort = 'speed-desc', ovType = 'DRIVER';
+  let compare = discs.filter(d => d.type === 'DRIVER').sort((a, b) => b.speed - a.speed).slice(0, 3).map(d => d.id);
+
+  host.innerHTML = `
+    <div class="bag-toolbar" data-el="pills"></div>
+    <div class="bag-filters" data-el="filters"></div>
+    <div class="bag-filters-foot"><button class="bag-link" data-el="reset">Reset filters</button></div>
+    <div class="bag-grid" data-el="grid"></div>
+    <div class="bag-over card reveal" data-el="overcard" style="margin-top:22px">
+      <div class="bag-over-grid">
+        <div>
+          <h3 style="font-family:var(--font-display);font-size:18px;margin:0 0 3px">Compare flight paths</h3>
+          <p class="note">Add a few discs to one chart — the gap-spotting view. Filter by type, then tap to add. RHBH, normal power, metres.</p>
+          <div class="bag-ovfilter" data-el="ovfilter"></div>
+          <div class="bag-chips" data-el="chips"></div>
+        </div>
+        <div class="bag-bigchart" data-el="bigchart"></div>
+      </div>
+    </div>`;
+  const q = sel => host.querySelector(`[data-el="${sel}"]`);
+
+  // modal (singleton on body)
+  let modal = document.querySelector('.bag-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.className = 'bag-modal'; modal.hidden = true;
+    modal.innerHTML = `<div class="bag-backdrop"></div><div class="bag-sheet" role="dialog" aria-modal="true"><button class="bag-x" aria-label="Close">×</button><div class="bag-mbody"></div></div>`;
+    document.body.appendChild(modal);
+    const close = () => { modal.hidden = true; };
+    modal.querySelector('.bag-x').onclick = close;
+    modal.querySelector('.bag-backdrop').onclick = close;
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
+  }
+  const mbody = modal.querySelector('.bag-mbody');
+
+  const FL_ABBR = { speed: 'Spd', glide: 'Gld', turn: 'Trn', fade: 'Fde' };
+  const FL_FULL = { speed: 'Speed', glide: 'Glide', turn: 'Turn', fade: 'Fade' };
+  const flPills = (d, big) => `<div class="bag-flnums">
+    ${['speed', 'glide', 'turn', 'fade'].map(k => `<div class="bag-fl ${k}"><b>${d[k]}</b><span>${big ? FL_FULL[k] : FL_ABBR[k]}</span></div>`).join('')}</div>`;
+
+  function paint(k) {
+    const [mn, mx] = bounds[k], [a, b] = range[k], span = (mx - mn) || 1;
+    const box = q('filters').querySelector(`[data-k="${k}"]`);
+    box.querySelector('.bag-fill').style.left = ((a - mn) / span * 100) + '%';
+    box.querySelector('.bag-fill').style.width = ((b - a) / span * 100) + '%';
+    box.querySelector('.bag-val').textContent = a === b ? `${a}` : `${a} – ${b}`;
+    box.querySelector('.lo').style.zIndex = (+box.querySelector('.lo').value >= mx) ? 5 : 3;
+  }
+  const filtered = () => discs.filter(d => (type === 'ALL' || d.type === type) && BAG_SLIDERS.every(([k]) => { const v = d[k]; return v == null || (v >= range[k][0] && v <= range[k][1]); }));
+  function sortList(list) {
+    const st = { understable: 0, neutral: 1, stable: 2, overstable: 3 };
+    const c = {
+      'speed-desc': (a, b) => b.speed - a.speed || a.name.localeCompare(b.name),
+      'speed-asc': (a, b) => a.speed - b.speed || a.name.localeCompare(b.name),
+      'stability': (a, b) => st[bagStability(a)] - st[bagStability(b)] || b.speed - a.speed,
+      'name': (a, b) => a.name.localeCompare(b.name),
+    };
+    return [...list].sort(c[sort]);
+  }
+
+  function buildPills() {
+    q('pills').innerHTML = BAG_TYPES.map(t => `<button class="bag-pill${t === 'ALL' ? ' active' : ''}" data-t="${t}">${BAG_TLABEL[t]}</button>`).join('')
+      + `<span class="bag-spacer"></span><select class="bag-sort" data-el="sort">
+          <option value="speed-desc">Speed ↓</option><option value="speed-asc">Speed ↑</option>
+          <option value="stability">Stability</option><option value="name">Name</option></select>`;
+    q('pills').querySelectorAll('.bag-pill').forEach(b => b.onclick = () => { type = b.dataset.t; q('pills').querySelectorAll('.bag-pill').forEach(p => p.classList.toggle('active', p === b)); applyGrid(); });
+    q('sort').onchange = e => { sort = e.target.value; applyGrid(); };
+  }
+  function buildFilters() {
+    q('filters').innerHTML = BAG_SLIDERS.map(([k, label]) => { const [mn, mx] = bounds[k];
+      return `<div data-k="${k}"><div class="bag-rng-head"><span class="bag-lbl">${label}</span><span class="bag-val"></span></div>
+        <div class="bag-rng"><div class="bag-track"></div><div class="bag-fill"></div>
+          <input type="range" class="lo" min="${mn}" max="${mx}" step="1" value="${mn}">
+          <input type="range" class="hi" min="${mn}" max="${mx}" step="1" value="${mx}"></div></div>`; }).join('');
+    BAG_SLIDERS.forEach(([k]) => { const box = q('filters').querySelector(`[data-k="${k}"]`), lo = box.querySelector('.lo'), hi = box.querySelector('.hi');
+      const upd = () => { range[k] = [Math.min(+lo.value, +hi.value), Math.max(+lo.value, +hi.value)]; paint(k); applyGrid(); };
+      lo.oninput = upd; hi.oninput = upd; paint(k); });
+    q('reset').onclick = () => { for (const [k] of BAG_SLIDERS) { range[k] = [...bounds[k]]; const box = q('filters').querySelector(`[data-k="${k}"]`); box.querySelector('.lo').value = bounds[k][0]; box.querySelector('.hi').value = bounds[k][1]; paint(k); } applyGrid(); };
+  }
+
+  function applyGrid() {
+    const list = sortList(filtered());
+    q('grid').innerHTML = list.length ? list.map(cardHtml).join('') : `<div class="bag-empty">No discs match these filters.</div>`;
+    q('grid').querySelectorAll('.bag-disc').forEach(c => c.onclick = () => openDetail(c.dataset.id));
+    revealBag();
+  }
+  function cardHtml(d) {
+    const copies = d.copies > 1 ? ` ×${d.copies}` : '';
+    return `<div class="bag-disc reveal" data-id="${esc(d.id)}" tabindex="0"><span class="bag-peek">View ↗</span>
+      <div class="bag-disc-top"><img class="bag-thumb" src="${IMG(d.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+        <div><h4 class="bag-name">${esc(d.name)}${copies}</h4><div class="bag-meta">${[d.brand, d.plastic].filter(Boolean).map(esc).join(' · ')}</div><span class="bag-stab">${bagStability(d)}</span></div></div>
+      ${flPills(d)}${d.role ? `<div class="bag-role">${esc(d.role)}</div>` : ''}</div>`;
+  }
+
+  function openDetail(id) {
+    const d = byId(id); if (!d) return;
+    const copies = d.copies > 1 ? ` ×${d.copies}` : '';
+    const inC = compare.includes(id);
+    const dist = Math.round(distanceM(flightOf(d)));
+    mbody.innerHTML = `
+      <div class="bag-md-top"><img class="bag-md-thumb" src="${IMG(d.id)}" alt="" onerror="this.style.visibility='hidden'">
+        <div><h3 class="bag-md-name">${esc(d.name)}${copies}</h3><div class="bag-meta">${[d.brand, d.plastic, d.weight ? d.weight + 'g' : ''].filter(Boolean).map(esc).join(' · ')}</div><span class="bag-stab">${bagStability(d)}</span></div></div>
+      ${flPills(d, true)}<div class="bag-md-chart" data-el="mdchart"></div>
+      <div class="bag-md-dist">Estimated flight <b>~${dist} m</b> · RHBH, normal power</div>
+      ${d.role ? `<div class="bag-md-role">${esc(d.role)}</div>` : ''}
+      <button class="bag-btn${inC ? ' on' : ''}" data-el="mdcompare">${inC ? '✓ In comparison — remove' : '＋ Add to comparison'}</button>`;
+    mbody.querySelector('[data-el="mdchart"]').innerHTML = renderFlightSvg(d, { width: 480, height: 400, strokeWidth: 4 });
+    drawFlight(mbody.querySelector('[data-el="mdchart"]'), !reduced());
+    mbody.querySelector('[data-el="mdcompare"]').onclick = () => {
+      const i = compare.indexOf(id); if (i >= 0) compare.splice(i, 1); else compare.push(id);
+      openDetail(id); renderOverlay(true);
+    };
+    modal.hidden = false;
+  }
+
+  function buildOvFilter() {
+    q('ovfilter').innerHTML = BAG_TYPES.map(t => `<button class="bag-mini${t === ovType ? ' active' : ''}" data-t="${t}">${BAG_TLABEL[t]}</button>`).join('')
+      + `<button class="bag-mini bag-clear" data-el="ovclear">Clear</button>`;
+    q('ovfilter').querySelectorAll('.bag-mini[data-t]').forEach(b => b.onclick = () => { ovType = b.dataset.t; buildOvFilter(); renderOverlay(true); });
+    q('ovclear').onclick = () => { compare = []; renderOverlay(true); };
+  }
+  function renderOverlay(animate) {
+    const list = discs.filter(d => ovType === 'ALL' || d.type === ovType).sort((a, b) => b.speed - a.speed);
+    q('chips').innerHTML = list.map(d => { const on = compare.includes(d.id), col = BAG_COLORS[compare.indexOf(d.id) % BAG_COLORS.length];
+      return `<button class="bag-chip${on ? ' on' : ''}" data-id="${esc(d.id)}"><span class="bag-dot" style="background:${on ? col : 'var(--faint)'}"></span>${esc(d.name)}</button>`; }).join('');
+    q('chips').querySelectorAll('.bag-chip').forEach(c => c.onclick = () => { const i = compare.indexOf(c.dataset.id); if (i >= 0) compare.splice(i, 1); else compare.push(c.dataset.id); renderOverlay(true); });
+    const chosen = compare.map(byId).filter(Boolean).map((d, i) => ({ ...d, color: BAG_COLORS[i % BAG_COLORS.length] }));
+    q('bigchart').innerHTML = chosen.length ? renderFlightSvg(chosen, { width: 440, height: 460, strokeWidth: 4 })
+      : `<div class="bag-chart-empty">Tap discs to compare their flight paths</div>`;
+    drawFlight(q('bigchart'), animate !== false && q('overcard').classList.contains('in'));
+  }
+
+  function drawFlight(hostEl, animate) {
+    hostEl.querySelectorAll('path.fp-p').forEach((p, i) => { const len = p.getTotalLength();
+      p.style.transition = 'none'; p.style.strokeDasharray = len; p.style.strokeDashoffset = (animate && !reduced()) ? len : 0;
+      if (animate && !reduced()) { p.getBoundingClientRect(); p.style.transition = `stroke-dashoffset .6s var(--ease) ${i * 70}ms`; p.style.strokeDashoffset = '0'; } });
+  }
+
+  let bagObs;
+  function revealBag() {
+    bagObs ??= new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); if (e.target.matches('[data-el="overcard"]')) renderOverlay(true); bagObs.unobserve(e.target); } }), { rootMargin: '0px 0px -6% 0px' });
+    host.querySelectorAll('.reveal:not(.in)').forEach(n => {
+      if (n.getBoundingClientRect().top < window.innerHeight) { n.style.transition = 'none'; n.classList.add('in'); requestAnimationFrame(() => n.style.transition = ''); if (n.matches('[data-el="overcard"]')) renderOverlay(false); }
+      else bagObs.observe(n);
+    });
+  }
+
+  buildPills(); buildFilters(); buildOvFilter(); applyGrid(); renderOverlay(false); revealBag();
 }
 
 // ── Footer ────────────────────────────────────────────────────────────

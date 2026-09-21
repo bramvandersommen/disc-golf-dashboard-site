@@ -11,6 +11,7 @@ const TABS = {
   meta:         '1909773820',
   round_stats:  '651105154',   // optional, sparse — render only on an exact match
   coaching_log: '550935323',   // optional, no join key — nothing depends on it
+  discs:        '413108322',   // the bag — one row per disc, source of truth for Part 2
 };
 
 // Cache-buster: `cache: 'no-store'` only governs the browser cache, not Google's
@@ -134,10 +135,10 @@ async function fetchOptional(name) {
 }
 
 export async function loadAll() {
-  const [stats, analyses, benchmarks, contractLog, meta, roundStats, coachingLog] = await Promise.all([
+  const [stats, analyses, benchmarks, contractLog, meta, roundStats, coachingLog, discsRaw] = await Promise.all([
     fetchTab('stats'), fetchTab('analyses'), fetchTab('benchmarks'),
     fetchTab('contract_log'), fetchTab('meta'),
-    fetchOptional('round_stats'), fetchOptional('coaching_log'),
+    fetchOptional('round_stats'), fetchOptional('coaching_log'), fetchOptional('discs'),
   ]);
 
   // stats: drop the blank row, coerce, sort newest-first BY period_end —
@@ -200,7 +201,22 @@ export async function loadAll() {
     }))
     .sort((a, b) => b.logged_at.localeCompare(a.logged_at));
 
-  return { periods, evalByPeriod, bench, contractLog, metaRows, roundStatRows, coachingNotes };
+  // discs: the bag. One row per disc; numbers may arrive as strings — coerce.
+  // Period-independent (equipment, not progression), so rendered once, not per period.
+  const discs = discsRaw
+    .filter(r => cell(r.disc_id))
+    .map(r => ({
+      id: cell(r.disc_id),
+      name: cell(r.name) || cell(r.disc_id),
+      brand: cell(r.brand),
+      plastic: cell(r.plastic),
+      type: (cell(r.type) || '').toUpperCase(),
+      speed: num(r.speed), glide: num(r.glide), turn: num(r.turn), fade: num(r.fade),
+      weight: num(r.weight_g), copies: num(r.copies) || 1,
+      role: cell(r.role) || '',
+    }));
+
+  return { periods, evalByPeriod, bench, contractLog, metaRows, roundStatRows, coachingNotes, discs };
 }
 
 // Presentational helpers ------------------------------------------------

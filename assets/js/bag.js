@@ -1,6 +1,6 @@
 // Bag page — standalone. Reads only the Discs tab and renders the bag view.
-import { loadDiscs } from './data.js?v=202609212154';
-import { renderBag } from './render.js?v=202609212154';
+import { loadDiscs } from './data.js?v=202609212201';
+import { renderBag } from './render.js?v=202609212201';
 
 const $ = sel => document.querySelector(sel);
 

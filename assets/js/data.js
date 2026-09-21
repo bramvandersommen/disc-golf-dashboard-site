@@ -218,6 +218,7 @@ export function coerceDiscs(rows) {
       speed: num(r.speed), glide: num(r.glide), turn: num(r.turn), fade: num(r.fade),
       weight: num(r.weight_g), copies: num(r.copies) || 1,
       role: cell(r.role) || '',
+      notes: cell(r.notes) || '',
       effective_stability: cell(r.effective_stability),
       tags: (cell(r.tags) || '').split(/[;,|]/).map(s => s.trim()).filter(Boolean),
     }));

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Bram — The Bag</title>
+<meta name="description" content="Disc golf bag — flight numbers, stability and per-disc flight paths.">
+<meta name="theme-color" content="#0A0D0B">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/img/icon-180.png">
+<link rel="manifest" href="site.webmanifest">
+<link rel="stylesheet" href="assets/css/main.css?v=202609212154">
+</head>
+<body>
+
+<header class="topbar" id="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand">
+      <img class="brand-mark" src="assets/img/appicon_transparent.png" alt="" width="36" height="36">
+      <div class="brand-text">
+        <h1>Disc Golf Progression</h1>
+        <span class="brand-sub">Bram van der Sommen</span>
+      </div>
+    </div>
+    <nav class="pagenav" aria-label="Pages">
+      <a class="pagetab" href="index.html">Progression</a>
+      <a class="pagetab active" href="bag.html">Bag</a>
+      <a class="pagetab" href="caddy.html">Caddy</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap" id="main">
+
+  <div id="load-state" class="load-state">
+    <div class="load-disc" aria-hidden="true"></div>
+    <p>Pulling the bag from the Sheet…</p>
+  </div>
+
+  <div id="bag-page" hidden>
+    <div class="page-header">
+      <div class="seclabel">Equipment</div>
+      <h2>The bag</h2>
+      <p class="page-lead">Every disc in the bag — flight numbers, stability, and a flight-path detail on tap. Compare any set on one chart to see the gaps.</p>
+    </div>
+    <div id="bag-section"></div>
+  </div>
+
+  <div id="error-state" class="load-state" hidden>
+    <p class="error-title">Couldn’t reach the Sheet</p>
+    <p id="error-detail" class="error-detail"></p>
+    <button id="retry-btn" class="btn">Retry</button>
+  </div>
+
+</main>
+
+<script src="vendor/papaparse.min.js"></script>
+<script type="module" src="assets/js/bag.js?v=202609212154"></script>
+</body>
+</html>

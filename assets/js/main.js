@@ -15,7 +15,7 @@ const state = {
   rangeStart: null, rangeEnd: null,
 };
 
-const PERIOD_SECTIONS = ['#overview', '#coaching', '#rating', '#putting', '#roundstats', '#scoring', '#activity', '#benchmarks', '#bag', '#coachlog'];
+const PERIOD_SECTIONS = ['#overview', '#coaching', '#rating', '#putting', '#roundstats', '#scoring', '#activity', '#benchmarks', '#coachlog'];
 const RANGE_SECTIONS = ['#range'];
 
 function selectPeriod(label) {
@@ -43,7 +43,6 @@ function renderAll() {
   R.renderActivity(state);
   R.renderCoachingLog(state);
   R.renderBenchmarks(state);
-  R.renderBag(state);
   R.renderFooter(state);
   observeReveals();
 }
@@ -60,7 +59,7 @@ function applyMode() {
   // #roundstats and #coachlog own their visibility (they hide when empty),
   // so mode only ever hides them — renderAll decides if they come back.
   for (const sel of PERIOD_SECTIONS) { const n = document.querySelector(sel); if (n && range) n.hidden = true; }
-  if (!range) for (const sel of ['#overview', '#coaching', '#rating', '#putting', '#scoring', '#activity', '#benchmarks', '#bag']) {
+  if (!range) for (const sel of ['#overview', '#coaching', '#rating', '#putting', '#scoring', '#activity', '#benchmarks']) {
     const n = document.querySelector(sel); if (n) n.hidden = false;
   }
   for (const sel of RANGE_SECTIONS) { const n = document.querySelector(sel); if (n) n.hidden = !range; }

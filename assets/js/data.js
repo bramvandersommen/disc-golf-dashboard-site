@@ -201,9 +201,13 @@ export async function loadAll() {
     }))
     .sort((a, b) => b.logged_at.localeCompare(a.logged_at));
 
-  // discs: the bag. One row per disc; numbers may arrive as strings — coerce.
-  // Period-independent (equipment, not progression), so rendered once, not per period.
-  const discs = discsRaw
+  return { periods, evalByPeriod, bench, contractLog, metaRows, roundStatRows, coachingNotes, discs: coerceDiscs(discsRaw) };
+}
+
+// discs: the bag. One row per disc; numbers may arrive as strings — coerce.
+// effective_stability / tags are read when present (Part 3), tolerated when absent.
+export function coerceDiscs(rows) {
+  return (rows || [])
     .filter(r => cell(r.disc_id))
     .map(r => ({
       id: cell(r.disc_id),
@@ -214,9 +218,14 @@ export async function loadAll() {
       speed: num(r.speed), glide: num(r.glide), turn: num(r.turn), fade: num(r.fade),
       weight: num(r.weight_g), copies: num(r.copies) || 1,
       role: cell(r.role) || '',
+      effective_stability: cell(r.effective_stability),
+      tags: (cell(r.tags) || '').split(/[;,|]/).map(s => s.trim()).filter(Boolean),
     }));
+}
 
-  return { periods, evalByPeriod, bench, contractLog, metaRows, roundStatRows, coachingNotes, discs };
+// Bag/Caddy pages need only the Discs tab, not the whole progression dataset.
+export async function loadDiscs() {
+  return coerceDiscs(await fetchTab('discs'));
 }
 
 // Presentational helpers ------------------------------------------------

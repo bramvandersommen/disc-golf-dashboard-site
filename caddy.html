@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Bram — Caddy</title>
+<meta name="description" content="Shot-shape advisor — the disc for the shot, per wind.">
+<meta name="theme-color" content="#0A0D0B">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/img/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="assets/img/icon-180.png">
+<link rel="manifest" href="site.webmanifest">
+<link rel="stylesheet" href="assets/css/main.css?v=202609212154">
+<style>
+  .soon { max-width: 640px; margin: 8vh auto 0; text-align: center; }
+  .soon .badge { display: inline-block; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--lime); border: 1px solid var(--lime-dim); border-radius: var(--r-pill); padding: 5px 13px; }
+  .soon h2 { font-size: 30px; margin: 16px 0 10px; }
+  .soon p { color: var(--muted); font-size: 14px; line-height: 1.6; }
+  .soon .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-card); padding: 22px; margin-top: 24px; text-align: left; }
+  .soon .card h3 { font-family: var(--font-display); font-size: 14px; margin: 0 0 10px; }
+  .soon .card ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 13px; line-height: 1.7; }
+  .soon .gate { margin-top: 18px; font-size: 12.5px; color: var(--warn); background: rgba(255,207,107,.06); border: 1px solid rgba(255,207,107,.22); border-radius: 12px; padding: 12px 14px; text-align: left; }
+</style>
+</head>
+<body>
+
+<header class="topbar" id="topbar">
+  <div class="wrap topbar-inner">
+    <div class="brand">
+      <img class="brand-mark" src="assets/img/appicon_transparent.png" alt="" width="36" height="36">
+      <div class="brand-text">
+        <h1>Disc Golf Progression</h1>
+        <span class="brand-sub">Bram van der Sommen</span>
+      </div>
+    </div>
+    <nav class="pagenav" aria-label="Pages">
+      <a class="pagetab" href="index.html">Progression</a>
+      <a class="pagetab" href="bag.html">Bag</a>
+      <a class="pagetab active" href="caddy.html">Caddy</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="soon">
+    <span class="badge">Caddy</span>
+    <h2>Shot-shape advisor</h2>
+    <p>Pick the wind and the shot; the caddy queries your bag live for the disc that fits — and re-answers whenever the wind changes or the bag does. No disc is ever tied to a shape.</p>
+
+    <div class="card">
+      <h3>What it will do</h3>
+      <ul>
+        <li>Wind selector (calm · head · tail · L→R · R→L) that re-shapes every recommendation.</li>
+        <li>A shot-shape catalog — drives, approaches, utility, putts — each a query against the bag.</li>
+        <li>Wind-reactive flight path for the recommended disc, plus the angle/height cue.</li>
+        <li>Honest bag-gap flags when nothing in the bag fits a shape in a given wind.</li>
+      </ul>
+    </div>
+
+    <div class="gate">Arriving once your disc behavioral data — <b>effective stability</b> and <b>tags</b> — is on the Discs tab. The recommendations read those directly, so the advisor is only as good as that data is real.</div>
+  </div>
+</main>
+
+</body>
+</html>

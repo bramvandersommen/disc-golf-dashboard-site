@@ -39,13 +39,14 @@ const BANK = {
 };
 
 // ── shape catalog (spec §3). Each shape is a query, not a disc. ──
-const S = (id, label, cat, desc, baseTarget, speed, o = {}) => ({ id, label, cat, desc, baseTarget, speed, glide: o.glide || null, reqTags: o.reqTags || [], excTags: o.excTags || [], bank: !!o.bank, height: o.height || null, putt: !!o.putt, shift: o.shift || 0 });
+const S = (id, label, cat, desc, baseTarget, speed, o = {}) => ({ id, label, cat, desc, baseTarget, speed, glide: o.glide || null, reqTags: o.reqTags || [], excTags: o.excTags || [], bank: !!o.bank, height: o.height || null, putt: !!o.putt, shift: o.shift || 0, tol: o.tol || 0 });
 const SHAPES = [
   S('max-distance', 'Max distance', 'Drive', 'Everything you have — your flippable bombers on a mini hyzer flip.', 'understable', null, { reqTags: ['distance'] }),
-  S('wide-hyzer', 'Wide hyzer 80–95m', 'Drive', 'Sweeping hyzer that holds an angle then finishes.', 'stable', [7, 11], { bank: true }),
-  S('straight-control', 'Straight control drive', 'Drive', 'Dead-straight tunnel line off the tee.', 'neutral', [7, 10]),
+  S('wide-hyzer', 'Wide hyzer drive', 'Drive', 'Sweeping hyzer that holds its angle then finishes — a stable disc, or a softer touch on a neutral one.', 'stable', [7, 11], { bank: true, tol: 1 }),
+  S('straight-control', 'Straight control drive', 'Drive', 'Dead-straight line off the tee — your straight-flying discs.', 'neutral', null, { reqTags: ['straight'] }),
   S('hyzer-flip', 'Hyzer-flip / S-curve', 'Drive', 'Flip up to flat, ride, then fade out.', 'understable', [9, 12], { bank: true }),
   S('turnover', 'Turnover — finishes right', 'Drive', 'Right-finishing line: flat-and-hard or anhyzer (RHBH).', 'understable', null, { reqTags: ['turnover'] }),
+  S('roller', 'Roller', 'Drive', 'Lay it on edge and let it run.', 'understable', null, { reqTags: ['roller'] }),
   S('flex-line', 'Flex line', 'Drive', 'Big anhyzer that flexes hard back left — a storm-wind shot.', 'overstable', [11, 13], { bank: true, reqTags: ['flex'] }),
   S('spike-hyzer', 'Spike hyzer', 'Drive', 'Steep up-and-down over an obstacle.', 'overstable', [7, 11], { bank: true, height: 'high' }),
   S('tunnel', 'Low ceiling / tunnel', 'Drive', 'Flat, low, no climb — under branches.', 'stable', null, { glide: 'low', reqTags: ['tunnel'], height: 'low' }),
@@ -116,6 +117,8 @@ function pickFor(shape) {
   const tgt = targetClass(shape), pool = eligible(shape);
   const rank = (a, b) => {
     const da = distTo(a, tgt), db = distTo(b, tgt); if (da !== db) return da - db;
+    // within a tolerant shape, prefer the flippier side (a wide hyzer holds; it never wants an overstable disc)
+    if (shape.tol) { const ia = CLASSES.indexOf(effStab(a)), ib = CLASSES.indexOf(effStab(b)); if (ia !== ib) return ia - ib; }
     const ra = roleMatch(a, shape), rb = roleMatch(b, shape); if (ra !== rb) return rb - ra;
     const ea = inEngage(a), eb = inEngage(b); if (ea !== eb) return eb - ea;
     if (shape.glide) return glideScore(a, shape) - glideScore(b, shape);
@@ -123,8 +126,8 @@ function pickFor(shape) {
   };
   if (!pool.length) return { picks: [], tgt, gap: null };
   if (shape.reqTags.length) return { picks: pool.sort(rank).slice(0, 2), tgt, gap: null };
-  const exact = pool.filter(d => distTo(d, tgt) === 0);
-  if (exact.length) return { picks: exact.sort(rank).slice(0, 2), tgt, gap: null };
+  const within = pool.filter(d => distTo(d, tgt) <= (shape.tol || 0));
+  if (within.length) return { picks: within.sort(rank).slice(0, 2), tgt, gap: null };
   const nearest = pool.slice().sort((a, b) => distTo(a, tgt) - distTo(b, tgt) || rank(a, b))[0];
   return { picks: [], tgt, gap: { disc: nearest, cls: effStab(nearest), dist: distTo(nearest, tgt) } };
 }

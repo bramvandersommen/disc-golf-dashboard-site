@@ -20,12 +20,26 @@ const isPutter = d => /putt/i.test(d.role) || tagsOf(d).includes('putt') || (d.t
 // ── wind (spec §2). `shift` is the SELECTION shift — it COMPENSATES for how the
 // wind makes discs behave: a headwind makes discs play understable, so you pick
 // one class MORE overstable (+1). ──
+// Arrow = the direction the wind TRAVELS relative to the thrower (bottom) → target
+// (top): headwind comes at you (↓), tailwind blows out (↑), crosswinds ← / →.
 const WIND = [
-  { id: 'calm', label: 'Calm', shift: 0, height: 'normal', arrow: '', note: 'Baseline stability.' },
-  { id: 'head', label: 'Headwind', shift: 1, height: 'lower', arrow: 'M8 13V3M8 3L4 7M8 3l4 4', note: 'Discs turn over — pick <b>one step more overstable</b>, throw lower. Never a flippy disc into the wind.' },
-  { id: 'tail', label: 'Tailwind', shift: -1, height: 'higher', arrow: 'M8 3v10M8 13l-4-4M8 13l4-4', note: 'Loses lift &amp; fades early — pick <b>one step more understable</b>, throw <b>higher</b>.' },
-  { id: 'ltr', label: 'Left→Right', shift: 1, height: 'lower', arrow: 'M3 8h10M13 8l-4-4M13 8l-4 4', note: 'Lifts the left edge (plays understable) — pick <b>more overstable</b>.' },
-  { id: 'rtl', label: 'Right→Left', shift: -1, height: 'lower', arrow: 'M13 8H3M3 8l4-4M3 8l4 4', note: 'Lifts the right edge (plays overstable) — pick <b>more understable</b>.' },
+  { id: 'calm', label: 'Calm', shift: 0, arrow: '', height: 'normal', heightWhy: '',
+    aim: 'at the target', aimWhy: '', note: 'Baseline stability.' },
+  { id: 'head', label: 'Headwind', shift: 1, arrow: 'M8 3v9M4.5 8.5l3.5 3.5 3.5-3.5', height: 'lower',
+    heightWhy: 'the headwind lifts the disc and it balloons', aim: 'left of the target',
+    aimWhy: 'more airspeed makes discs play understable and stands hyzer banks up, so it flies right',
+    note: 'Discs play understable — pick <b>one step more overstable</b>.' },
+  { id: 'tail', label: 'Tailwind', shift: -1, arrow: 'M8 13V4M4.5 7.5l3.5-3.5 3.5 3.5', height: 'higher',
+    heightWhy: 'the tailwind kills lift so the disc drops', aim: 'right of the target',
+    aimWhy: 'less airspeed makes discs overstable — a harder, earlier fade left', note: 'Discs fade harder &amp; earlier — pick <b>one step more understable</b>.' },
+  { id: 'ltr', label: 'Left→Right', shift: 1, arrow: 'M3 8h9M8.5 4.5l3.5 3.5-3.5 3.5', height: 'lower',
+    heightWhy: 'a crosswind gives you less to work with up high', aim: 'left of the target',
+    aimWhy: 'the wind pushes the disc right and lifts the left edge (plays understable)',
+    note: 'Lifts the left edge (plays understable) — pick <b>more overstable</b>.' },
+  { id: 'rtl', label: 'Right→Left', shift: -1, arrow: 'M13 8H4M8.5 4.5l-3.5 3.5 3.5 3.5', height: 'lower',
+    heightWhy: 'a crosswind gives you less to work with up high', aim: 'right of the target',
+    aimWhy: 'the wind pushes the disc left and steepens the bank (plays overstable) — on a hyzer, aim well right and let it carry back',
+    note: 'Lifts the right edge (plays overstable) — pick <b>more understable</b>.' },
 ];
 const windById = id => WIND.find(w => w.id === id);
 
@@ -92,7 +106,7 @@ function buildWind() {
   host.querySelectorAll('.sa-wpill').forEach(b => b.onclick = () => { wind = b.dataset.w; host.querySelectorAll('.sa-wpill').forEach(p => p.classList.toggle('active', p === b)); updateWindNote(); renderCatalog(); });
   updateWindNote();
 }
-function updateWindNote() { const w = windById(wind); $('#wind-note').innerHTML = `${w.note} Default height: <b>${w.height}</b>.`; }
+function updateWindNote() { const w = windById(wind); $('#wind-note').innerHTML = `${w.note} Throw <b>${w.height}</b>, aim <b>${w.aim}</b>.`; }
 
 // ── selection (spec §4) ──
 function targetClass(shape) { return shape.putt ? null : shift(shape.baseTarget, shape.shift + windById(wind).shift); }
@@ -174,7 +188,8 @@ function openShape(id) {
       legend = `<div class="sa-legend"><span><i style="background:#5C6960"></i>Calm</span><span><i style="background:#C8FF4D"></i>${esc(w.label)} (illustrative)</span></div>`;
     }
   }
-  const height = shape.height || w.height;
+  const heightLine = shape.height ? `stays ${esc(shape.height)} in any wind (shape override)` : `${esc(w.height)}${w.heightWhy ? ` — ${esc(w.heightWhy)}` : ''}`;
+  const aimLine = shape.putt ? 'at the basket — wind is an aim tweak, not a disc change' : `${esc(w.aim)}${w.aimWhy ? ` — ${esc(w.aimWhy)}` : ''}`;
   const cueCls = top ? effStab(top) : 'neutral';
   const angleCue = shape.putt ? 'Aim &amp; commit — wind is an aim change, not a disc change.'
     : cueCls === 'understable' ? 'Understable pick — cue the TOP of your release-angle range.'
@@ -192,7 +207,8 @@ function openShape(id) {
       : `<div class="sa-banknote">⚠ ${gap ? `No <b>${tgt}</b> disc in the ${shape.speed ? `${shape.speed[0]}–${shape.speed[1]} speed` : 'right'} range for ${w.label.toLowerCase()}. Nearest is <b>${esc(gap.disc.name)}</b> (${esc(gap.cls)}, ${gap.dist} class off). A real bag gap — it fills itself when you add a matching disc.` : `Nothing fits this shape yet${shape.reqTags.length ? ` — needs a disc tagged <b>${shape.reqTags.join(' / ')}</b>` : ''}.`}</div>`}
     <dl class="sa-cue">
       <dt>Target</dt><dd>${shape.putt ? 'putting disc (role-based, not stability-filtered)' : `<b>${tgt}</b> stability in ${esc(w.label.toLowerCase())}`}</dd>
-      <dt>Height</dt><dd>${esc(height)}${shape.height ? ' (shape override)' : ''}</dd>
+      <dt>Height</dt><dd>${heightLine}</dd>
+      <dt>Aim</dt><dd>${aimLine}</dd>
       <dt>Angle</dt><dd>${angleCue}</dd>
     </dl>
     ${shape.bank ? `<div class="sa-banknote"><b>Bank vs wind:</b> ${esc(BANK[wind])}</div>` : ''}`;

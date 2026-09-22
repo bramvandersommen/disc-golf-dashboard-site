@@ -18,6 +18,19 @@ const state = {
 const PERIOD_SECTIONS = ['#overview', '#coaching', '#rating', '#putting', '#roundstats', '#scoring', '#activity', '#benchmarks', '#coachlog'];
 const RANGE_SECTIONS = ['#range'];
 
+// Open on the most recently WRITTEN evaluation — check-ins included.
+// Sorting by period_end alone lands on the current calendar month, which ends
+// in the future and has no evaluation yet, so the page opened on an empty
+// coaching panel. Newest generated_at is what "the last evaluation" means.
+function defaultPeriodLabel() {
+  let best = null, bestAt = '';
+  for (const p of state.periods) {
+    const at = state.evalByPeriod.get(p.period_label)?.generated_at;
+    if (at && at > bestAt) { bestAt = at; best = p; }
+  }
+  return (best ?? state.periods[0]).period_label;
+}
+
 function selectPeriod(label) {
   const i = state.periods.findIndex(p => p.period_label === label);
   state.selected = state.periods[i];
@@ -188,7 +201,7 @@ async function boot() {
 
     const params = new URLSearchParams(location.search);
     selectPeriod(state.periods.find(p => p.period_label === params.get('period'))?.period_label
-      ?? state.periods[0].period_label);
+      ?? defaultPeriodLabel());
 
     initControls();
     $('#period-picker').value = state.selected.period_label;

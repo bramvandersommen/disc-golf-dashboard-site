@@ -225,6 +225,12 @@ export function renderCoachStrip(state) {
 
   const prioChips = (row.priorities || []).map(p =>
     `<span class="coach-strip-prio"><b>${esc(p.rank)}</b>${esc(p.title)}</span>`).join('');
+  // The strip is the shortcut to the full read — jumping there while the
+  // panel is still collapsed would look like a dead link, so open it too.
+  setTimeout(() => host.querySelector('.coach-strip')?.addEventListener('click', () => {
+    const d = document.getElementById('eval-details');
+    if (d) d.open = true;
+  }), 0);
   host.innerHTML = `
     <a class="coach-strip reveal" href="#coaching">
       <div class="coach-strip-head">
@@ -265,19 +271,31 @@ export function renderEval(state) {
       </div>
     </div>`).join('');
 
+  // Collapsed by default: the headline is the summary, the rest is opt-in so
+  // the stats below stay reachable without scrolling past ~3,000 characters.
+  const prioCount = (row.priorities || []).length;
   host.innerHTML = `
-    <div class="eval-panel reveal">
-      <div class="eval-tag">Coaching evaluation · ${esc(periodName(state.selected, { withRange: true }))}</div>
-      <h3 class="eval-headline">${esc(row.headline)}</h3>
-      <div class="eval-narrative">${md(row.narrative_md)}</div>
-      ${prios ? `<div class="eval-priorities">${prios}</div>` : ''}
-      ${row.changed_since_last ? `
-        <div class="eval-changed">
-          <div class="eval-changed-label">Changed since last evaluation</div>
-          <div class="eval-changed-body">${md(row.changed_since_last)}</div>
-        </div>` : ''}
-      <div class="eval-meta">Generated ${fmtDate(row.generated_at, { time: true })} · from stats computed ${fmtDate(row.source_stats_computed_at, { time: true })}</div>
-    </div>`;
+    <details class="eval-panel reveal" id="eval-details">
+      <summary class="eval-summary">
+        <div class="eval-tag">Coaching evaluation · ${esc(periodName(state.selected, { withRange: true }))}</div>
+        <h3 class="eval-headline">${esc(row.headline)}</h3>
+        <span class="eval-toggle">
+          <span class="eval-toggle-open">Read full evaluation${prioCount ? ` · ${prioCount} priorit${prioCount === 1 ? 'y' : 'ies'}` : ''}</span>
+          <span class="eval-toggle-close">Collapse</span>
+          <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 4.5L6 8.5L10 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
+      </summary>
+      <div class="eval-body">
+        <div class="eval-narrative">${md(row.narrative_md)}</div>
+        ${prios ? `<div class="eval-priorities">${prios}</div>` : ''}
+        ${row.changed_since_last ? `
+          <div class="eval-changed">
+            <div class="eval-changed-label">Changed since last evaluation</div>
+            <div class="eval-changed-body">${md(row.changed_since_last)}</div>
+          </div>` : ''}
+        <div class="eval-meta">Generated ${fmtDate(row.generated_at, { time: true })} · from stats computed ${fmtDate(row.source_stats_computed_at, { time: true })}</div>
+      </div>
+    </details>`;
 }
 
 // ── Rating trajectory ─────────────────────────────────────────────────
@@ -362,6 +380,11 @@ export function renderPutting(state) {
   const daysSince = p.last_session
     ? Math.floor((Date.now() - new Date(`${p.last_session}T00:00:00Z`)) / 86400000) : null;
 
+  // Progression, same treatment as the rating trajectory. Months with no
+  // logged session carry `putting: null` and are dropped rather than plotted
+  // as 0% — an unpractised month is absent data, not a miss.
+  const puttTrend = s.monthly_trend.filter(m => m.putting?.c1_pct != null);
+
   host.innerHTML = `
     <div class="putt-headline card reveal">
       <div class="putt-gap">
@@ -396,32 +419,13 @@ export function renderPutting(state) {
       </div>
     </div>
 
-    <div class="grid2" style="margin-top:14px">
-      <div class="card reveal">
-        <h3>Practice format</h3>
-        <p class="note">Two different session types, side by side</p>
-        <div class="chart-box" data-chart="fmt"></div>
-        <div class="legend">
-          ${Object.entries(p.by_session_type).map(([k, v], i) =>
-            `<span class="legend-item"><span class="legend-swatch" style="background:${i ? COLORS.blue : COLORS.limeDeep}"></span>${esc(k)} · ${v.attempts} putts</span>`).join('')}
-        </div>
-      </div>
-      <div class="card reveal">
-        <h3>Circle coverage</h3>
-        <p class="note">C1 is inside 10m · C2 is 10–20m</p>
-        <div class="circle-rows">
-          <div class="circle-row">
-            <div><b>C1</b><span class="n-tag">${p.c1.attempts} putts</span></div>
-            <div class="circle-pct">${p.c1.pct}%</div>
-          </div>
-          <div class="circle-row empty">
-            <div><b>C2</b><span class="n-tag thin">0 putts</span></div>
-            <div class="circle-pct muted">—</div>
-          </div>
-        </div>
-        <p class="note" style="margin-top:12px">Every logged putt so far is inside C1. There is no C2 data to chart — not a gap in the dashboard, a gap in the practice log.</p>
-      </div>
-    </div>`;
+    ${puttTrend.length >= 2 ? `
+    <div class="card reveal" style="margin-top:14px">
+      <h3>Putting accuracy over time</h3>
+      <p class="note">C1 make rate per month, against the ${p.c1.target_pct}% target</p>
+      <div class="chart-box" data-chart="putt-trend"></div>
+      <div class="chart-caveat neutral">Months without a logged session are skipped, not drawn as zero</div>
+    </div>` : ''}`;
 
   countUp(host.querySelector('[data-putt]'), p.c1.pct, { decimals: 1 });
   requestAnimationFrame(() => requestAnimationFrame(() =>
@@ -447,17 +451,22 @@ export function renderPutting(state) {
     rows: [['Attempts', b.attempts], ['Share', `${Math.round(b.attempts / totalAttempts * 100)}%`]],
   })), { yFmt: v => v });
 
-  // One measure, one axis: make rate only. Session and attempt counts are
-  // different units and belong in the labels, not as bars on a % scale.
-  const types = Object.entries(p.by_session_type);
-  barChart(host.querySelector('[data-chart="fmt"]'), types.map(([name, v], i) => ({
-    label: name,
-    value: v.pct,
-    em: true,
-    color: i ? COLORS.blue : COLORS.limeDeep,
-    title: name,
-    rows: [['Make rate', `${v.pct}%`], ['Putts', `${v.made} / ${v.attempts}`], ['Sessions', v.sessions]],
-  })), { max: 100, yFmt: v => `${v}%`, height: 200, maxBarW: 64 });
+  if (puttTrend.length >= 2) {
+    lineChart(host.querySelector('[data-chart="putt-trend"]'), puttTrend.map(m => ({
+      x: monthName(m.month, { short: true, year: false }),
+      y: m.putting.c1_pct,
+      title: monthName(m.month),
+      rows: [
+        ['C1 make rate', `${m.putting.c1_pct}%`],
+        ['Putts', `${m.putting.c1_attempts}`],
+        ['Sessions', m.putting.sessions],
+      ],
+    })), {
+      unit: 'C1 make rate',
+      yFmt: v => `${v}%`,
+      anchor: { value: p.c1.target_pct, label: `target ${p.c1.target_pct}%` },
+    });
+  }
 }
 
 // ── Scoring: patterns first, holes as drill-down ──────────────────────

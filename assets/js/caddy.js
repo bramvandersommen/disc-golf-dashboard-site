@@ -168,7 +168,7 @@ function cardHtml(shape) {
     ${body}</div>`;
 }
 function pickHtml(d) {
-  return `<div class="sa-pick"><img src="discs/${d.id}.webp" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
+  return `<div class="sa-pick"><span class="disc-thumb" style="--d:40px"><img src="discs/${d.id}.webp" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></span>
     <div><div class="sa-pn">${esc(d.name)}</div><div class="sa-pf">${esc(effStab(d))}${d.effective_stability ? ' ✦' : ''}${d.role ? ' · ' + esc(d.role) : ''}</div></div>
     <div class="sa-pnums">${d.speed}/${d.glide}/${d.turn}/${d.fade}</div></div>`;
 }
@@ -200,7 +200,7 @@ function openShape(id) {
     <div class="sa-title">${esc(shape.label)}</div>
     <div class="sa-mdesc">${esc(shape.desc)}</div>
     ${top ? `<div class="sa-chart">${chart}</div>${legend}
-      ${picks.map(d => `<div class="sa-rec"><img src="discs/${d.id}.webp" alt="" onerror="this.style.visibility='hidden'">
+      ${picks.map(d => `<div class="sa-rec"><span class="disc-thumb" style="--d:56px"><img src="discs/${d.id}.webp" alt="" onerror="this.style.visibility='hidden'"></span>
         <div><h4>${esc(d.name)} <span style="color:var(--muted);font-size:12px;font-weight:400">${d.speed}/${d.glide}/${d.turn}/${d.fade}</span></h4>
         <div class="sa-pf" style="font-size:11.5px;color:var(--muted)">${esc(effStab(d))}${d.effective_stability ? ' ✦' : ''}${d.role ? ' · ' + esc(d.role) : ''}</div>
         <div class="sa-why">${why(d, shape, tgt)}</div></div></div>`).join('')}`

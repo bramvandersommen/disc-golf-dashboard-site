@@ -855,41 +855,31 @@ input[type="date"]:hover, input[type="date"]:focus-visible { border-color: var(-
 .bag-disc:hover .bag-peek { opacity: 1; }
 .bag-peek { position: absolute; top: 12px; right: 12px; font-size: 10px; color: var(--lime); opacity: 0; transition: opacity .2s; letter-spacing: .04em; }
 .bag-disc-top { display: flex; gap: 13px; align-items: center; margin-bottom: 12px; }
-/* Disc thumbnail — Bram's PS design: a 132px disc centered inside a 150px lime
-   "border" ring (~7% gap each side). The ring wrapper carries the lime drop glow
-   (112°) + lime counter inner shadow (−80°); the inner .disc carries the black
-   bottom-right inner shadow and the white top-right highlight. PS px scaled to size. */
-.bag-thumb, .bag-md-thumb {
-  position: relative; flex: none; border-radius: 50%;
+/* Reusable disc thumbnail (Bram's PS spec) — ONE lime-halo treatment for the bag
+   and the caddy. Set --d to the disc diameter; the ring sits ~7% outside it. Shadow
+   values scale with --d so it reads identically at every size. A directional lime
+   drop-shadow (down-right) makes the halo bright bottom-right and fade top-left; the
+   disc gets a black bottom-right inner shadow + a white top-left highlight. */
+.disc-thumb {
+  --d: 60px;
+  position: relative; flex: none;
+  width: calc(var(--d) * 1.167); height: calc(var(--d) * 1.167);
+  border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
+  box-shadow: calc(var(--d) * 0.018) calc(var(--d) * 0.026) calc(var(--d) * 0.083) rgba(200,255,77,0.15),
+              calc(var(--d) * 0.007) calc(var(--d) * 0.014) calc(var(--d) * 0.024) rgba(200,255,77,0.20),
+              inset calc(var(--d) * -0.0095) calc(var(--d) * -0.014) calc(var(--d) * 0.03) rgba(200,252,77,0.35);
 }
-/* Not a stroked ring: a directional lime drop shadow (down-right, 112°) so the halo
-   is bright bottom-right and fades to almost nothing top-left, plus a lime inner
-   shadow that fills the gap on the bottom-right. */
-.bag-thumb { width: 70px; height: 70px;
-  box-shadow: 1.1px 1.6px 5px rgba(200,255,77,0.15),          /* lime halo, bottom-right (soft) */
-              0.4px 0.9px 1.4px rgba(200,255,77,0.20),         /* tighter lime, bottom-right */
-              inset -0.6px -0.9px 1.8px rgba(200,252,77,0.35); /* lime in the gap, directional */
-}
-.bag-md-thumb { width: 98px; height: 98px;
-  box-shadow: 1.5px 2.2px 7px rgba(200,255,77,0.15),
-              0.6px 1.2px 2px rgba(200,255,77,0.20),
-              inset -0.8px -1.2px 2.5px rgba(200,252,77,0.35);
-}
-.bag-thumb-disc, .bag-md-disc { position: relative; flex: none; border-radius: 50%; }
-.bag-thumb-disc { width: 60px; height: 60px; }
-.bag-md-disc { width: 84px; height: 84px; }
-.bag-thumb-img, .bag-md-img {
-  width: 100%; height: 100%; border-radius: 50%; object-fit: cover; display: block;
+.disc-thumb > img {
+  width: var(--d); height: var(--d); border-radius: 50%; object-fit: cover; display: block;
   background: radial-gradient(circle at 50% 40%, var(--surface-3), var(--surface-2));
+  box-shadow: calc(var(--d) * -0.0155) calc(var(--d) * -0.0155) calc(var(--d) * 0.012) rgba(255,255,255,0.17);
 }
-.bag-thumb-img { box-shadow: -0.9px -0.9px 1px rgba(255,255,255,0.17); } /* white highlight, top-left */
-.bag-md-img { box-shadow: -1.3px -1.3px 1px rgba(255,255,255,0.17); }
-.bag-thumb-disc::after, .bag-md-disc::after {
-  content: ''; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+.disc-thumb::after {
+  content: ''; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: var(--d); height: var(--d); border-radius: 50%; pointer-events: none;
+  box-shadow: inset calc(var(--d) * -0.0226) calc(var(--d) * -0.0226) calc(var(--d) * 0.0226) rgba(0,0,0,0.43);
 }
-.bag-thumb-disc::after { box-shadow: inset -1.4px -1.4px 1.4px rgba(0,0,0,0.43); } /* black inner, bottom-right */
-.bag-md-disc::after { box-shadow: inset -1.9px -1.9px 1.9px rgba(0,0,0,0.43); }
 .bag-name { font-family: var(--font-display); font-size: 15px; font-weight: 600; margin: 0 0 2px; line-height: 1.2; }
 .bag-meta { font-size: 11.5px; color: var(--muted); }
 .bag-stab { display: inline-block; font-size: 9.5px; letter-spacing: .06em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--r-pill); border: 1px solid var(--line); color: var(--ink-2); margin-top: 5px; }

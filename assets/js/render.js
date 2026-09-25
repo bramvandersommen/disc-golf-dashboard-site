@@ -1005,7 +1005,7 @@ export function renderBag(state) {
   function cardHtml(d) {
     const copies = d.copies > 1 ? ` ×${d.copies}` : '';
     return `<div class="bag-disc reveal" data-id="${esc(d.id)}" tabindex="0"><span class="bag-peek">View ↗</span>
-      <div class="bag-disc-top"><span class="bag-thumb"><span class="bag-thumb-disc"><img class="bag-thumb-img" src="${IMG(d.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></span></span>
+      <div class="bag-disc-top"><span class="disc-thumb" style="--d:60px"><img src="${IMG(d.id)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></span>
         <div><h4 class="bag-name">${esc(d.name)}${copies}</h4><div class="bag-meta">${[d.brand, d.plastic].filter(Boolean).map(esc).join(' · ')}</div><span class="bag-stab">${bagStability(d)}</span></div></div>
       ${flPills(d)}${d.role ? `<div class="bag-role">${esc(d.role)}</div>` : ''}</div>`;
   }
@@ -1016,7 +1016,7 @@ export function renderBag(state) {
     const inC = compare.includes(id);
     const dist = Math.round(distanceM(flightOf(d)));
     mbody.innerHTML = `
-      <div class="bag-md-top"><span class="bag-md-thumb"><span class="bag-md-disc"><img class="bag-md-img" src="${IMG(d.id)}" alt="" onerror="this.style.visibility='hidden'"></span></span>
+      <div class="bag-md-top"><span class="disc-thumb" style="--d:84px"><img src="${IMG(d.id)}" alt="" onerror="this.style.visibility='hidden'"></span>
         <div><h3 class="bag-md-name">${esc(d.name)}${copies}</h3><div class="bag-meta">${[d.brand, d.plastic, d.weight ? d.weight + 'g' : ''].filter(Boolean).map(esc).join(' · ')}</div><span class="bag-stab">${bagStability(d)}</span></div></div>
       ${flPills(d, true)}<div class="bag-md-chart" data-el="mdchart"></div>
       <div class="bag-md-dist">Estimated flight <b>~${dist} m</b> · RHBH, normal power</div>

@@ -16,6 +16,7 @@ const shift = (cls, delta) => CLASSES[Math.max(0, Math.min(3, CLASSES.indexOf(cl
 const effStab = d => (d.effective_stability && CLASSES.includes(d.effective_stability)) ? d.effective_stability : derived(d);
 const tagsOf = d => d.tags || [];
 const isPutter = d => /putt/i.test(d.role) || tagsOf(d).includes('putt') || (d.type === 'PUTTER' && d.speed <= 3);
+const byId = id => discs.find(d => d.id === id);
 
 // ── wind (spec §2). `shift` is the SELECTION shift — it COMPENSATES for how the
 // wind makes discs behave: a headwind makes discs play understable, so you pick
@@ -53,35 +54,43 @@ const BANK = {
 };
 
 // ── shape catalog (spec §3). Each shape is a query, not a disc. ──
-const S = (id, label, cat, desc, baseTarget, speed, o = {}) => ({ id, label, cat, desc, baseTarget, speed, glide: o.glide || null, reqTags: o.reqTags || [], excTags: o.excTags || [], bank: !!o.bank, height: o.height || null, putt: !!o.putt, shift: o.shift || 0, tol: o.tol || 0 });
+// `line` (hyzer|anhyzer|flat|putt) + `release` are SHAPE metadata (how the shot is
+// thrown), not disc data — used by the throw-advice engine. Disc-specific "how" comes
+// from the sheet's notes column.
+const S = (id, label, cat, desc, baseTarget, speed, o = {}) => ({ id, label, cat, desc, baseTarget, speed, glide: o.glide || null, reqTags: o.reqTags || [], excTags: o.excTags || [], bank: !!o.bank, height: o.height || null, putt: !!o.putt, shift: o.shift || 0, tol: o.tol || 0, line: o.line || 'flat', release: o.release || 'a flat, controlled release' });
 const SHAPES = [
-  S('max-distance', 'Max distance', 'Drive', 'Everything you have — your flippable bombers on a mini hyzer flip.', 'understable', null, { reqTags: ['distance'] }),
-  S('wide-hyzer', 'Wide hyzer drive', 'Drive', 'Sweeping hyzer that holds its angle then finishes — a stable disc, or a softer touch on a neutral one.', 'stable', [7, 11], { bank: true, tol: 1 }),
-  S('straight-control', 'Straight control drive', 'Drive', 'Dead-straight line off the tee — your straight-flying discs.', 'neutral', null, { reqTags: ['straight'] }),
-  S('hyzer-flip', 'Hyzer-flip / S-curve', 'Drive', 'Flip up to flat, ride, then fade out.', 'understable', [9, 12], { bank: true }),
-  S('turnover', 'Turnover — finishes right', 'Drive', 'Right-finishing line: flat-and-hard or anhyzer (RHBH).', 'understable', null, { reqTags: ['turnover'] }),
-  S('roller', 'Roller', 'Drive', 'Lay it on edge and let it run.', 'understable', null, { reqTags: ['roller'] }),
-  S('flex-line', 'Flex line', 'Drive', 'Big anhyzer that flexes hard back left — a storm-wind shot.', 'overstable', [11, 13], { bank: true, reqTags: ['flex'] }),
-  S('spike-hyzer', 'Spike hyzer', 'Drive', 'Steep up-and-down over an obstacle.', 'overstable', [7, 11], { bank: true, height: 'high' }),
-  S('tunnel', 'Low ceiling / tunnel', 'Drive', 'Flat, low, no climb — under branches.', 'stable', null, { glide: 'low', reqTags: ['tunnel'], height: 'low' }),
-  S('approach-50-80', '50–80m straight', 'Approach', 'Controlled straight approach.', 'neutral', [4, 9]),
-  S('touch-10-30', '10–30m touch', 'Approach', 'Soft landing, minimal skip.', 'stable', null, { glide: 'low', reqTags: ['touch'] }),
-  S('finish-left', 'Must finish hard left', 'Approach', 'Has to dump left around a guard.', 'overstable', [4, 9], { bank: true }),
-  S('finish-right-tree', 'Right around a tree', 'Approach', 'Must bend right past an obstacle.', 'understable', [4, 9], { bank: true }),
-  S('forehand', 'Forehand utility', 'Utility', 'Flick line, must resist turnover.', 'overstable', [4, 13], { reqTags: ['forehand'], height: 'low' }),
-  S('uphill', 'Uphill', 'Utility', 'Climbing shot plays more overstable — pick a class flippier.', 'neutral', [5, 11], { shift: -1 }),
-  S('downhill', 'Downhill', 'Utility', 'Dropping shot plays more understable — pick a class more stable.', 'neutral', [7, 11], { shift: 1 }),
-  S('glow-round', 'Glow round', 'Utility', 'Night round — needs a glow disc.', 'neutral', null, { reqTags: ['glow'], height: 'low' }),
-  S('putt-8', 'Inside 8m', 'Putt', 'Inside the circle — commit.', 'neutral', null, { putt: true }),
-  S('putt-8-15', '8–15m', 'Putt', 'Long putt / short jump.', 'neutral', null, { putt: true }),
+  S('max-distance', 'Max distance', 'Drive', 'Everything you have — your flippable bombers on a mini hyzer flip.', 'understable', null, { reqTags: ['distance'], line: 'hyzer', release: 'a mini hyzer flip' }),
+  S('wide-hyzer', 'Wide hyzer drive', 'Drive', 'Sweeping hyzer that holds its angle then finishes — a stable disc, or a softer touch on a neutral one.', 'stable', [7, 11], { bank: true, tol: 1, line: 'hyzer', release: 'a hyzer that holds its angle' }),
+  S('straight-control', 'Straight control drive', 'Drive', 'Dead-straight line off the tee — your straight-flying discs.', 'neutral', null, { reqTags: ['straight'], line: 'flat', release: 'flat, ~75% power' }),
+  S('hyzer-flip', 'Hyzer-flip / S-curve', 'Drive', 'Flip up to flat, ride, then fade out.', 'understable', [9, 12], { bank: true, line: 'hyzer', release: 'a hyzer release to flip up flat' }),
+  S('turnover', 'Turnover — finishes right', 'Drive', 'Right-finishing line: flat-and-hard or anhyzer (RHBH).', 'understable', null, { reqTags: ['turnover'], line: 'anhyzer', release: 'flat and hard, or a slight anhyzer' }),
+  S('roller', 'Roller', 'Drive', 'Lay it on edge and let it run.', 'understable', null, { reqTags: ['roller'], line: 'anhyzer', release: 'on edge, a steep anhyzer' }),
+  S('flex-line', 'Flex line', 'Drive', 'Big anhyzer that flexes hard back left — a storm-wind shot.', 'overstable', [11, 13], { bank: true, reqTags: ['flex'], line: 'anhyzer', release: 'a big anhyzer that flexes back' }),
+  S('spike-hyzer', 'Spike hyzer', 'Drive', 'Steep up-and-down over an obstacle.', 'overstable', [7, 11], { bank: true, height: 'high', line: 'hyzer', release: 'a steep hyzer bank' }),
+  S('tunnel', 'Low ceiling / tunnel', 'Drive', 'Flat, low, no climb — under branches.', 'stable', null, { glide: 'low', reqTags: ['tunnel'], height: 'low', line: 'flat', release: 'flat and low, ~75%' }),
+  S('approach-50-80', '50–80m straight', 'Approach', 'Controlled straight approach.', 'neutral', [4, 9], { line: 'flat', release: 'flat and controlled' }),
+  S('touch-10-30', '10–30m touch', 'Approach', 'Soft landing, minimal skip.', 'stable', null, { glide: 'low', reqTags: ['touch'], line: 'flat', release: 'a soft, floaty release' }),
+  S('finish-left', 'Must finish hard left', 'Approach', 'Has to dump left around a guard.', 'overstable', [4, 9], { bank: true, line: 'hyzer', release: 'a hyzer' }),
+  S('finish-right-tree', 'Right around a tree', 'Approach', 'Must bend right past an obstacle.', 'understable', [4, 9], { bank: true, line: 'anhyzer', release: 'an anhyzer' }),
+  S('forehand', 'Forehand utility', 'Utility', 'Flick line, must resist turnover.', 'overstable', [4, 13], { reqTags: ['forehand'], height: 'low', line: 'flat', release: 'a flat flick' }),
+  S('uphill', 'Uphill', 'Utility', 'Climbing shot plays more overstable — pick a class flippier.', 'neutral', [5, 11], { shift: -1, line: 'flat', release: 'flat with extra power' }),
+  S('downhill', 'Downhill', 'Utility', 'Dropping shot plays more understable — pick a class more stable.', 'neutral', [7, 11], { shift: 1, line: 'flat', release: 'lower, less power' }),
+  S('glow-round', 'Glow round', 'Utility', 'Night round — needs a glow disc.', 'neutral', null, { reqTags: ['glow'], height: 'low', line: 'flat', release: 'flat' }),
+  S('putt-8', 'Inside 8m', 'Putt', 'Inside the circle — commit.', 'neutral', null, { putt: true, line: 'putt', release: 'commit — smooth, firm pace' }),
+  S('putt-8-15', '8–15m', 'Putt', 'Long putt / short jump.', 'neutral', null, { putt: true, line: 'putt', release: 'a touch more pace or a step-through' }),
 ];
 const CATS = ['Drive', 'Approach', 'Utility', 'Putt'];
 const COLORS = ['#C8FF4D', '#6883D6', '#7A9F2C', '#E0B341', '#D97757'];
 
-// provisional engagement band (spec §1 / B3 — derived-from-form later; placeholder)
-const ENGAGE = [7, 11];
+// THE player-power knob — the fastest speed you reliably bring up. Bump this one
+// number as your distance grows and the whole advisor ages with you (which discs you
+// can bomb, how hard wind bites). The engagement band derives from it. (spec B3)
+const POWER_CEILING = 11;
+const ENGAGE = [POWER_CEILING - 4, POWER_CEILING];
+const STRENGTH_WORD = { light: 'slightly ', moderate: '', strong: 'significantly ' };
 
-let discs = [], wind = 'calm';
+let discs = [], wind = 'calm', strength = 'moderate';
+let curShape = null, curFocus = null;   // open modal's shape + focused disc
 
 boot();
 async function boot() {
@@ -102,10 +111,18 @@ function buildWind() {
   const host = $('#wind');
   host.innerHTML = `<span class="sa-wind-lbl">Wind</span><div class="sa-wind-pills">` +
     WIND.map(w => `<button class="sa-wpill${w.id === wind ? ' active' : ''}" data-w="${w.id}">${w.arrow ? `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${w.arrow}"/></svg>` : ''}${w.label}</button>`).join('') +
-    `</div><div class="sa-wind-note" id="wind-note"></div>`;
-  host.querySelectorAll('.sa-wpill').forEach(b => b.onclick = () => { wind = b.dataset.w; host.querySelectorAll('.sa-wpill').forEach(p => p.classList.toggle('active', p === b)); updateWindNote(); renderCatalog(); });
-  updateWindNote();
+    `</div><div class="sa-strength" id="strength"></div><div class="sa-wind-note" id="wind-note"></div>`;
+  host.querySelectorAll('.sa-wpill').forEach(b => b.onclick = () => { wind = b.dataset.w; host.querySelectorAll('.sa-wpill').forEach(p => p.classList.toggle('active', p === b)); renderStrength(); updateWindNote(); renderCatalog(); reopenModal(); });
+  renderStrength(); updateWindNote();
 }
+function renderStrength() {
+  const host = $('#strength');
+  if (wind === 'calm') { host.innerHTML = ''; return; }
+  const LV = [['light', 'Light'], ['moderate', 'Moderate'], ['strong', 'Strong']];
+  host.innerHTML = `<span class="sa-strength-lbl">Strength</span>` + LV.map(([id, l]) => `<button class="sa-slvl${id === strength ? ' on' : ''}" data-s="${id}">${l}</button>`).join('');
+  host.querySelectorAll('.sa-slvl').forEach(b => b.onclick = () => { strength = b.dataset.s; renderStrength(); renderCatalog(); reopenModal(); });
+}
+function reopenModal() { if (curShape && !$('#modal').hidden) openShape(curShape, curFocus); }
 function updateWindNote() { const w = windById(wind); $('#wind-note').innerHTML = `${w.note} Throw <b>${w.height}</b>, aim <b>${w.aim}</b>.`; }
 
 // ── selection (spec §4) ──
@@ -177,34 +194,44 @@ function windAdjust(d) {
   const m = { calm: [0, 0], head: [-1, -1], tail: [1, 1], ltr: [-1, 0], rtl: [0, 1] }[wind];
   return { ...d, turn: d.turn + m[0], fade: Math.max(0, d.fade + m[1]) };
 }
-function openShape(id) {
+function openShape(id, focusId) {
   const shape = SHAPES.find(s => s.id === id); if (!shape) return;
-  const { picks, tgt, gap } = pickFor(shape), w = windById(wind), top = picks[0];
+  const { picks, tgt, gap } = pickFor(shape), w = windById(wind);
+  const rec = picks[0] || null;
+  const focus = (focusId && byId(focusId)) || rec;   // the disc we advise on
+  curShape = id; curFocus = focus ? focus.id : null;
+
   let chart = '', legend = '';
-  if (top) {
-    if (wind === 'calm') chart = renderFlightSvg({ ...top, color: 'var(--lime)' }, { width: 520, height: 380, strokeWidth: 4 });
+  if (focus) {
+    if (wind === 'calm') chart = renderFlightSvg({ ...focus, color: 'var(--lime)' }, { width: 520, height: 380, strokeWidth: 4 });
     else {
-      chart = renderFlightSvg([{ ...top, name: 'Calm', color: '#5C6960' }, { ...windAdjust(top), name: w.label, color: '#C8FF4D' }], { width: 520, height: 380, strokeWidth: 4 });
+      chart = renderFlightSvg([{ ...focus, name: 'Calm', color: '#5C6960' }, { ...windAdjust(focus), name: w.label, color: '#C8FF4D' }], { width: 520, height: 380, strokeWidth: 4 });
       legend = `<div class="sa-legend"><span><i style="background:#5C6960"></i>Calm</span><span><i style="background:#C8FF4D"></i>${esc(w.label)} (illustrative)</span></div>`;
     }
   }
   const heightLine = shape.height ? `stays ${esc(shape.height)} in any wind (shape override)` : `${esc(w.height)}${w.heightWhy ? ` — ${esc(w.heightWhy)}` : ''}`;
   const aimLine = shape.putt ? 'at the basket — wind is an aim tweak, not a disc change' : `${esc(w.aim)}${w.aimWhy ? ` — ${esc(w.aimWhy)}` : ''}`;
-  const cueCls = top ? effStab(top) : 'neutral';
+  const cueCls = focus ? effStab(focus) : (shape.putt ? 'neutral' : tgt);
   const angleCue = shape.putt ? 'Aim &amp; commit — wind is an aim change, not a disc change.'
-    : cueCls === 'understable' ? 'Understable pick — cue the TOP of your release-angle range.'
-      : cueCls === 'overstable' ? 'Overstable pick — cue the BOTTOM of your release-angle range.'
-        : 'Neutral pick — a flat, repeatable release.';
+    : cueCls === 'understable' ? 'Understable disc — cue the TOP of your release-angle range.'
+      : cueCls === 'overstable' ? 'Overstable disc — cue the BOTTOM of your release-angle range.'
+        : 'Neutral disc — a flat, repeatable release.';
+  const isSwap = focus && rec && focus.id !== rec.id;
+
   $('#mbody').innerHTML = `
-    <div class="sa-eyebrow">${esc(shape.cat)} · ${esc(w.label)}</div>
+    <div class="sa-eyebrow">${esc(shape.cat)} · ${esc(w.label)}${wind !== 'calm' ? ` · ${esc(strength)}` : ''}</div>
     <div class="sa-title">${esc(shape.label)}</div>
     <div class="sa-mdesc">${esc(shape.desc)}</div>
-    ${top ? `<div class="sa-chart">${chart}</div>${legend}
-      ${picks.map(d => `<div class="sa-rec"><span class="disc-thumb" style="--d:56px"><img src="discs/${d.id}.webp" alt="" onerror="this.style.visibility='hidden'"></span>
-        <div><h4>${esc(d.name)} <span style="color:var(--muted);font-size:12px;font-weight:400">${d.speed}/${d.glide}/${d.turn}/${d.fade}</span></h4>
-        <div class="sa-pf" style="font-size:11.5px;color:var(--muted)">${esc(effStab(d))}${d.effective_stability ? ' ✦' : ''}${d.role ? ' · ' + esc(d.role) : ''}</div>
-        <div class="sa-why">${why(d, shape, tgt)}</div></div></div>`).join('')}`
-      : `<div class="sa-banknote">⚠ ${gap ? `No <b>${tgt}</b> disc in the ${shape.speed ? `${shape.speed[0]}–${shape.speed[1]} speed` : 'right'} range for ${w.label.toLowerCase()}. Nearest is <b>${esc(gap.disc.name)}</b> (${esc(gap.cls)}, ${gap.dist} class off). A real bag gap — it fills itself when you add a matching disc.` : `Nothing fits this shape yet${shape.reqTags.length ? ` — needs a disc tagged <b>${shape.reqTags.join(' / ')}</b>` : ''}.`}</div>`}
+    ${focus ? `
+      <div class="sa-chart">${chart}</div>${legend}
+      <label class="sa-swap">Throwing <select id="sa-disc">${discOptions(focus.id)}</select>${isSwap ? `<button type="button" class="sa-swap-rec" id="sa-reset">↺ back to ${esc(rec.name)}</button>` : ''}</label>
+      <div class="sa-rec"><span class="disc-thumb" style="--d:56px"><img src="discs/${focus.id}.webp" alt="" onerror="this.style.visibility='hidden'"></span>
+        <div><h4>${esc(focus.name)} <span style="color:var(--muted);font-size:12px;font-weight:400">${focus.speed}/${focus.glide}/${focus.turn}/${focus.fade}</span></h4>
+        <div class="sa-pf" style="font-size:11.5px;color:var(--muted)">${esc(effStab(focus))}${focus.effective_stability ? ' ✦' : ''}${focus.role ? ' · ' + esc(focus.role) : ''}</div>
+        <div class="sa-why">${fitNote(focus, shape, tgt)}${focus.notes ? ` ${esc(focus.notes)}` : ''}</div></div></div>
+      <div class="sa-throw"><span class="sa-throw-lbl">How to throw it</span>${throwAdvice(focus, shape)}</div>`
+      : `<div class="sa-banknote">⚠ ${gap ? `No <b>${tgt}</b> disc in the ${shape.speed ? `${shape.speed[0]}–${shape.speed[1]} speed` : 'right'} range for ${w.label.toLowerCase()}. Nearest is <b>${esc(gap.disc.name)}</b> (${esc(gap.cls)}, ${gap.dist} class off) — a real bag gap.` : `Nothing fits this shape yet${shape.reqTags.length ? ` — needs a disc tagged <b>${shape.reqTags.join(' / ')}</b>` : ''}.`}</div>
+      <label class="sa-swap">Throw one anyway <select id="sa-disc">${discOptions(null)}</select></label>`}
     <dl class="sa-cue">
       <dt>Target</dt><dd>${shape.putt ? 'putting disc (role-based, not stability-filtered)' : `<b>${tgt}</b> stability in ${esc(w.label.toLowerCase())}`}</dd>
       <dt>Height</dt><dd>${heightLine}</dd>
@@ -212,17 +239,46 @@ function openShape(id) {
       <dt>Angle</dt><dd>${angleCue}</dd>
     </dl>
     ${shape.bank ? `<div class="sa-banknote"><b>Bank vs wind:</b> ${esc(BANK[wind])}</div>` : ''}`;
+  const sel = $('#sa-disc'); if (sel) sel.onchange = e => openShape(id, e.target.value);
+  const reset = $('#sa-reset'); if (reset) reset.onclick = () => openShape(id, null);
   $('#modal').hidden = false;
   drawFlight($('#mbody'), !reduce());
 }
-function why(d, shape, tgt) {
+
+function discOptions(selId) {
+  return [...discs].sort((a, b) => (b.speed || 0) - (a.speed || 0) || a.name.localeCompare(b.name))
+    .map(d => `<option value="${esc(d.id)}"${d.id === selId ? ' selected' : ''}>${esc(d.name)} · ${d.speed}/${d.glide}/${d.turn}/${d.fade}</option>`).join('');
+}
+function fitNote(d, shape, tgt) {
+  if (shape.putt) return `A putter — this is pace and aim, not stability.`;
   const cls = effStab(d), overridden = d.effective_stability && d.effective_stability !== derived(d);
-  const bits = [`Plays <b>${cls}</b>${overridden ? ` — your call, not the ${derived(d)} its ${d.turn}/${d.fade} would suggest` : ''}.`];
-  if (d.notes) bits.push(` ${esc(d.notes)}`);
-  else if (d.role) bits.push(` Your ${esc(d.role.toLowerCase())}.`);
-  bits.push(` Fits the <b>${tgt}</b> target for a ${shape.label.toLowerCase()} in ${windById(wind).label.toLowerCase()}.`);
-  if (!inEngage(d) && d.speed > ENGAGE[1]) bits.push(` Above your reliable-engagement speed — full commit or drop down.`);
-  return bits.join('');
+  const base = `Plays <b>${cls}</b>${overridden ? ' (your override)' : ''}.`;
+  if (shape.reqTags.length && tagsOf(d).some(t => shape.reqTags.includes(t))) return base + ` Tagged for this shot.`;
+  const dd = distTo(d, tgt);
+  if (dd === 0) return base + ` Bang on the <b>${tgt}</b> this shot wants.`;
+  const dir = CLASSES.indexOf(cls) > CLASSES.indexOf(tgt) ? 'more overstable' : 'flippier';
+  return base + ` ${dd} class${dd > 1 ? 'es' : ''} ${dir} than the ideal <b>${tgt}</b> — workable, just not the natural pick.`;
+}
+function throwAdvice(d, shape) {
+  if (shape.putt) return `Throw ${shape.release}. Wind is an aim/pace tweak here, not a throw change.`;
+  const w = windById(wind);
+  const power = (d.speed != null && d.speed > POWER_CEILING) ? ` It's above the ${POWER_CEILING}-speed you reliably bring up — commit fully or drop down.` : '';
+  if (wind === 'calm') return `Throw ${shape.release}.${power}`;
+  const es = effStab(d), inducesUnder = wind === 'head' || wind === 'ltr';
+  // effective intensity = wind strength, eased/raised by how much the disc resists this wind
+  const lvl = { light: 1, moderate: 2, strong: 3 }[strength];
+  const resist = inducesUnder ? (es === 'overstable' ? -1 : es === 'understable' ? 1 : 0)
+                              : (es === 'overstable' ? 1 : es === 'understable' ? -1 : 0);
+  const amt = ['barely ', 'slightly ', '', 'significantly '][Math.max(0, Math.min(3, lvl + resist))];
+  const discNote = inducesUnder
+    ? (es === 'understable' ? ' It flips easily — really commit to the angle.' : es === 'overstable' ? ' It fights the wind well, so keep it modest.' : '')
+    : (es === 'overstable' ? ' It fades hard here — a flippier disc is easier.' : es === 'understable' ? ' Its flip actually helps downwind.' : '');
+  let adj;
+  if (wind === 'head') adj = `it plays understable and balloons — ${amt}${shape.line === 'anhyzer' ? 'ease the anhyzer' : 'add hyzer'} and power, and throw it lower.`;
+  else if (wind === 'tail') adj = `it holds over and drops — ${amt}back off the power and throw higher; expect a harder, earlier fade left.`;
+  else if (wind === 'ltr') adj = `the wind lifts the left edge (plays understable) — ${amt}hold more hyzer and aim left.`;
+  else adj = `the wind steepens the bank (plays overstable) — ${amt}ease off, aim right and let it carry back.`;
+  return `Throw ${shape.release}. ${w.label} (${strength}): ${adj}${discNote}${power}`;
 }
 function drawFlight(host, animate) {
   host.querySelectorAll('path.fp-p').forEach((p, i) => { const len = p.getTotalLength();

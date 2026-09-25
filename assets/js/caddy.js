@@ -166,8 +166,11 @@ function pickFor(shape) {
 // ── render ──
 function renderCatalog() {
   const host = $('#catalog');
-  host.innerHTML = CATS.map(cat => `<div class="sa-cat">${cat}</div><div class="sa-grid">${SHAPES.filter(s => s.cat === cat).map(cardHtml).join('')}</div>`).join('');
+  const nav = $('#catnav'); if (nav) nav.innerHTML = CATS.map(c => `<a class="sa-catpill" href="#cat-${c}">${c}</a>`).join('');
+  host.innerHTML = CATS.map(cat => `<div class="sa-cat" id="cat-${cat}">${cat}</div><div class="sa-grid">${SHAPES.filter(s => s.cat === cat).map(cardHtml).join('')}</div>`).join('');
   host.querySelectorAll('.sa-shape').forEach(c => c.onclick = () => openShape(c.dataset.id));
+  // a recommended pick opens the shot focused on that specific disc
+  host.querySelectorAll('.sa-pick[data-disc]').forEach(p => p.onclick = e => { e.stopPropagation(); openShape(p.closest('.sa-shape').dataset.id, p.dataset.disc); });
   requestAnimationFrame(() => host.querySelectorAll('.reveal').forEach((n, i) => setTimeout(() => n.classList.add('in'), i * 16)));
 }
 function cardHtml(shape) {
@@ -185,7 +188,7 @@ function cardHtml(shape) {
     ${body}</div>`;
 }
 function pickHtml(d) {
-  return `<div class="sa-pick"><span class="disc-thumb" style="--d:40px"><img src="discs/${d.id}.webp" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></span>
+  return `<div class="sa-pick" data-disc="${esc(d.id)}"><span class="disc-thumb" style="--d:40px"><img src="discs/${d.id}.webp" alt="" loading="lazy" onerror="this.style.visibility='hidden'"></span>
     <div><div class="sa-pn">${esc(d.name)}</div><div class="sa-pf">${esc(effStab(d))}${d.effective_stability ? ' ✦' : ''}${d.role ? ' · ' + esc(d.role) : ''}</div></div>
     <div class="sa-pnums">${d.speed}/${d.glide}/${d.turn}/${d.fade}</div></div>`;
 }
@@ -225,6 +228,7 @@ function openShape(id, focusId) {
     ${focus ? `
       <div class="sa-chart">${chart}</div>${legend}
       <label class="sa-swap">Throwing <select id="sa-disc">${discOptions(focus.id)}</select>${isSwap ? `<button type="button" class="sa-swap-rec" id="sa-reset">↺ back to ${esc(rec.name)}</button>` : ''}</label>
+      <div class="sa-swap-hint">↑ Swap to any disc to see how you'd throw that one instead.</div>
       <div class="sa-rec"><span class="disc-thumb" style="--d:56px"><img src="discs/${focus.id}.webp" alt="" onerror="this.style.visibility='hidden'"></span>
         <div><h4>${esc(focus.name)} <span style="color:var(--muted);font-size:12px;font-weight:400">${focus.speed}/${focus.glide}/${focus.turn}/${focus.fade}</span></h4>
         <div class="sa-pf" style="font-size:11.5px;color:var(--muted)">${esc(effStab(focus))}${focus.effective_stability ? ' ✦' : ''}${focus.role ? ' · ' + esc(focus.role) : ''}</div>
